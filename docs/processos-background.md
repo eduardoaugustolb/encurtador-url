@@ -91,6 +91,18 @@ pipeline.ltrim(bufferKey, 0, MAX_BUFFER_SIZE - 1);
 pipeline.exec().catch(() => {});
 ```
 
+### Deduplicação de Cliques
+
+O `after()` combinado com `redirect()` pode registrar o callback múltiplas vezes por requisição em alguns cenários (React 19 + React Compiler). Para evitar contagem múltipla, o `trackClick()` usa `SET NX` com TTL de 10s:
+
+```typescript
+const dedupKey = `dedup:click:${linkId}`;
+const ok = await redis.set(dedupKey, "1", "EX", 10, "NX");
+if (!ok) return; // já registrado — descarta duplicata
+```
+
+Apenas o primeiro callback within 10 segundos para o mesmo link registra o click. Os seguintes são ignorados. Isso previne super-contagem sem prejudicar a performance (1 round-trip extra ao Redis, ~1ms).
+
 ### flushClickBuffer (src/lib/analytics/flush-clicks.ts)
 
 ```mermaid
@@ -121,6 +133,7 @@ flowchart TB
 | Dois flushes simultâneos | `LTRIM` previne duplicação: cada um remove só seus registros |
 | Buffer chega a 5000 | `LTRIM` no `trackClick` mantém só os 5000 mais recentes |
 | Tabela clicks truncada | Buffer pode ter dados não-flushados ainda (correto — serão persistidos) |
+| `after()` registrado múltiplas vezes | Dedup `SET NX` descarta duplicatas dentro de 10s |
 
 ## Cache de Slugs (Wipe Cache)
 
