@@ -197,7 +197,7 @@ sequenceDiagram
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 60, 'rankSpacing': 90}}}%%
 flowchart TB
-    A["/\\[slug\\]/page.tsx<br/>307 Redirect"] --> B["after() callback"]
+    A["/\\[slug\\]/route.ts<br/>307 Redirect"] --> B["after() callback"]
     B --> C["trackClick(linkId, req)"]
 
     C --> D{"slug resolvido<br/>com sucesso?"}

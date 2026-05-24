@@ -16,8 +16,6 @@ function sha256hex(input: string): string {
 const BUFFER_KEY = "clicks:buffer";
 const MAX_BUFFER = 5_000;
 
-const DEDUP_TTL = 10;
-
 export async function trackClick(input: TrackClickInput): Promise<void> {
   try {
     const uaHash = input.userAgent ? sha256hex(input.userAgent) : null;
@@ -29,10 +27,6 @@ export async function trackClick(input: TrackClickInput): Promise<void> {
       country: input.country?.slice(0, 2) ?? null,
       uaHash,
     });
-
-    const dedupKey = `dedup:click:${input.linkId}`;
-    const ok = await redis.set(dedupKey, "1", "EX", DEDUP_TTL, "NX");
-    if (!ok) return;
 
     await redis.pipeline().lpush(BUFFER_KEY, entry).ltrim(BUFFER_KEY, 0, MAX_BUFFER - 1).exec();
   } catch {

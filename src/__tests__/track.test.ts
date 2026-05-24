@@ -8,7 +8,6 @@ function getPipeline(): MockRedisPipeline {
 }
 
 beforeEach(() => {
-  globalThis.__mockRedis.set.mockClear();
   globalThis.__mockRedis.pipeline.mockClear();
 });
 
@@ -37,34 +36,6 @@ describe("trackClick", () => {
     expect(parsed.country).toBe("BR");
     expect(typeof parsed.uaHash).toBe("string");
     expect(typeof parsed.clickedAt).toBe("string");
-  });
-
-  test("checks dedup key before pushing", async () => {
-    await trackClick({
-      linkId: "link-1",
-      referrer: null,
-      country: null,
-      userAgent: "Chrome/120",
-    });
-
-    expect(globalThis.__mockRedis.set).toHaveBeenCalledWith(
-      "dedup:click:link-1", "1", "EX", 10, "NX",
-    );
-  });
-
-  test("skips pipeline when dedup key exists", async () => {
-    globalThis.__mockRedis.set.mockImplementationOnce(
-      async () => null,
-    );
-
-    await trackClick({
-      linkId: "link-dup",
-      referrer: null,
-      country: null,
-      userAgent: null,
-    });
-
-    expect(globalThis.__mockRedis.pipeline).not.toHaveBeenCalled();
   });
 
   test("hashes user-agent with SHA-256", async () => {
@@ -119,8 +90,12 @@ describe("trackClick", () => {
   });
 
   test("swallows errors silently", async () => {
-    globalThis.__mockRedis.set.mockImplementationOnce(
+    const badPipeline = createMockPipeline();
+    badPipeline.exec.mockImplementationOnce(
       async () => { throw new Error("redis down"); },
+    );
+    globalThis.__mockRedis.pipeline.mockImplementationOnce(
+      () => badPipeline,
     );
 
     await expect(
