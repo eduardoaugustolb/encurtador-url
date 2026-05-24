@@ -118,3 +118,7 @@ sequenceDiagram
 | LinkList | `src/components/links/link-list.tsx` | Infinite scroll list |
 | AnalyticsDashboard | `src/components/analytics/` | Gráficos + filtros |
 | Login | `src/app/admin/login/page.tsx` | Formulário de login |
+
+---
+
+[← Visão Geral](visao-geral.md) · [Fluxo de Dados →](fluxo-de-dados.md)

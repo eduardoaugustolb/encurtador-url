@@ -41,3 +41,7 @@ bun run dev
 - **Tailwind v4** — Estilização
 - **shadcn/ui + base-ui** — Componentes headless
 - **Recharts** — Gráficos de analytics
+
+---
+
+**[Visão Geral →](visao-geral.md)**

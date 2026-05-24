@@ -72,3 +72,7 @@ A página de links admin usa **React Query** (`useInfiniteLinks`) com `Intersect
 ### 10. OpenTelemetry Tracing
 
 Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada com spans OTel via `traceStep()`. Em produção (Vercel), os traces são exportados automaticamente.
+
+---
+
+[← README](README.md) · [Arquitetura →](arquitetura.md)

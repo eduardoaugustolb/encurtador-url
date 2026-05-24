@@ -7,25 +7,25 @@ O Bit Link **não tem** um sistema de filas dedicado (Bull, RabbitMQ, etc.). O p
 ```mermaid
 flowchart TB
     subgraph "Redirect (tempo real)"
-        A[Usuário acessa /slug] --> B[307 Redirect]
-        B --- C[after callback]
+        A["Usuário acessa /slug"] --> B["307 Redirect"]
+        B --- C["after callback"]
     end
 
     subgraph "Redis Buffer"
-        C --> D[LPUSH clicks:buffer]
-        D --> E[LTRIM clicks:buffer 0 4999]
-        E --> F[Lista no Redis<br>máx 5.000 eventos]
+        C --> D["LPUSH clicks:buffer"]
+        D --> E["LTRIM clicks:buffer 0 4999"]
+        E --> F["Lista no Redis<br/>máx 5.000 eventos"]
     end
 
     subgraph "Flush sob demanda"
-        G[Admin acessa analytics] --> H[flushClickBuffer]
-        H --> I[LRANGE clicks:buffer 0 -1]
-        I --> J[INSERT batch no PostgreSQL]
-        J --> K[DEL clicks:buffer]
+        G["Admin acessa analytics"] --> H["flushClickBuffer()"]
+        H --> I["LRANGE clicks:buffer 0 -1"]
+        I --> J["INSERT batch no PostgreSQL"]
+        J --> K["DEL clicks:buffer"]
     end
 
     subgraph "Dados persistentes"
-        L[(PostgreSQL<br>tabela clicks)]
+        L[("PostgreSQL<br/>tabela clicks")]
         J --> L
     end
 ```
@@ -52,13 +52,13 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    A[Recebe linkId + Request] --> B{slug resolvido?}
-    B -->|Não| Z[return]
-    B -->|Sim| C[Extrair referrer<br>do header]
-    C --> D[Calcular uaHash<br>= SHA-256(ua)]
-    D --> E[Gerar nanoid<br>para o click]
-    E --> F[Pipeline Redis:<br>LPUSH + LTRIM]
-    F --> G[Pipeline.exec<br>fire-and-forget]
+    A["Recebe linkId + Request"] --> B{"slug resolvido?"}
+    B -->|Não| Z["return"]
+    B -->|Sim| C["Extrair referrer<br/>do header"]
+    C --> D["Calcular uaHash<br/>= SHA-256(ua)"]
+    D --> E["Gerar nanoid<br/>para o click"]
+    E --> F["Pipeline Redis:<br/>LPUSH + LTRIM"]
+    F --> G["Pipeline.exec<br/>fire-and-forget"]
 ```
 
 ```typescript
@@ -73,14 +73,14 @@ pipeline.exec().catch(() => {});
 
 ```mermaid
 flowchart LR
-    A[flushClickBuffer] --> B[LRANGE clicks:buffer]
-    B --> C{Tem eventos?}
-    C -->|Não| F[return]
-    C -->|Sim| D[Parse JSON + validar]
-    D --> E[db.insert(clicks).values(...)]
-    E --> G[DEL clicks:buffer]
+    A["flushClickBuffer()"] --> B["LRANGE clicks:buffer"]
+    B --> C{"Tem eventos?"}
+    C -->|Não| F["return"]
+    C -->|Sim| D["Parse JSON + validar"]
+    D --> E["db.insert(clicks).values(...)"]
+    E --> G["DEL clicks:buffer"]
     G --> H["log success"]
-    E -->|Erro| I["log error<br>(silencioso)"]
+    E -->|Erro| I["log error<br/>(silencioso)"]
 ```
 
 ## E se...?
@@ -98,3 +98,7 @@ flowchart LR
 1. **Cron job**: Agendar `flushClickBuffer()` a cada 30s via Vercel Cron Jobs
 2. **Deduplicação**: Adicionar `ON CONFLICT DO NOTHING` no INSERT de clicks
 3. **Fila real**: Migrar para Redis Streams + consumidor dedicado
+
+---
+
+[← Banco de Dados](banco-de-dados.md) · [README →](README.md)

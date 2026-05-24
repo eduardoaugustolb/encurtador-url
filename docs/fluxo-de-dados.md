@@ -21,7 +21,7 @@ sequenceDiagram
         alt Cache Hit
             C-->>N: { id, destinationUrl, isActive }
         else Cache Miss
-            C-x--N: null
+            C--xN: null
             N->>DB: SELECT FROM links WHERE slug = ?
             DB-->>N: link data
             N->>C: SET slug:meu-slug (TTL 24h)
@@ -175,16 +175,20 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["/\[slug\]/page.tsx<br>307 Redirect"] --> B["after() callback"]
+    A["/\\[slug\\]/page.tsx<br/>307 Redirect"] --> B["after() callback"]
     B --> C["trackClick(linkId, req)"]
-    C --> D{"slug resolvido<br>com sucesso?"}
-    D -->|Sim| E[Extrair dados:<br>referrer, user-agent, ip]
-    D -->|Não| F[Retorna<br>sem fazer nada]
-    E --> G[Gerar<br>nanoid]
-    E --> H[Gerar<br>uaHash: SHA-256]
-    G --> I[Pipeline Redis:<br>LPUSH + LTRIM]
+    C --> D{"slug resolvido<br/>com sucesso?"}
+    D -->|Sim| E["Extrair dados:<br/>referrer, user-agent, ip"]
+    D -->|Não| F["Retorna<br/>sem fazer nada"]
+    E --> G["Gerar<br/>nanoid"]
+    E --> H["Gerar<br/>uaHash: SHA-256"]
+    G --> I["Pipeline Redis:<br/>LPUSH + LTRIM"]
     H --> I
-    I --> J[Redis list<br>clicks:buffer<br>max 5000]
+    I --> J["Redis list<br/>clicks:buffer<br/>max 5000"]
 ```
 
 O flush (escrita no PG) é explicado em [Processos em Background](processos-background.md).
+
+---
+
+[← Arquitetura](arquitetura.md) · [Banco de Dados →](banco-de-dados.md)

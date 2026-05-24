@@ -142,3 +142,7 @@ bunx drizzle-kit generate  # Gera SQL das mudanças
 bunx drizzle-kit migrate   # Aplica no banco
 bunx drizzle-kit studio    # UI para ver dados
 ```
+
+---
+
+[← Fluxo de Dados](fluxo-de-dados.md) · [Processos Background →](processos-background.md)
