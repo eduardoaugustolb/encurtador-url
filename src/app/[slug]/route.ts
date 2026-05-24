@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -9,11 +9,10 @@ import { resolveSlug } from "@/lib/redis";
 import { checkRateLimit, rateLimitKey } from "@/lib/redis/rate-limit";
 import { traceStep } from "@/lib/telemetry";
 
-export default async function SlugPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ slug: string }> },
+) {
   const { slug } = await params;
 
   if (slug === "not-found") {
@@ -54,5 +53,5 @@ export default async function SlugPage({
     ),
   );
 
-  redirect(link.destinationUrl);
+  return Response.redirect(link.destinationUrl, 307);
 }

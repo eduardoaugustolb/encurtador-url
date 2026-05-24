@@ -42,7 +42,7 @@ graph TB
 src/
 ├── app/                    # App Router (páginas + API)
 │   ├── [slug]/
-│   │   └── page.tsx        # Motor de redirect
+│   │   └── route.ts        # Motor de redirect
 │   ├── admin/
 │   │   ├── login/          # Página de login
 │   │   └── (dashboard)/    # Layout protegido
@@ -84,18 +84,19 @@ sequenceDiagram
     Note over U,P: ─── Redirect Flow ───
     U->>N: GET /abc1234
     N->>MW: middleware
-    MW->>SC: [slug]/page
+    MW-->>N: next() (admin only)
+    N->>API: [slug]/route (GET)
 
-    SC->>R: resolveSlug("abc1234")
+    API->>R: resolveSlug("abc1234")
     alt Cache Hit
-        R-->>SC: { destinationUrl }
+        R-->>API: { destinationUrl }
     else Cache Miss
-        SC->>P: SELECT links WHERE slug = ?
-        P-->>SC: link data
-        SC->>R: SET slug:… (TTL 24h)
+        API->>P: SELECT links WHERE slug = ?
+        P-->>API: link data
+        API->>R: SET slug:… (TTL 24h)
     end
 
-    SC-->>U: 307 Redirect
+    API-->>U: 307 Redirect
 
     Note over U,P: ─── Admin API Flow ───
     U->>N: GET /api/links
@@ -114,7 +115,7 @@ sequenceDiagram
 
 | Componente | Arquivo | Papel |
 |---|---|---|
-| Redirect Engine | `src/app/[slug]/page.tsx` | Resolve slug, aplica rate limit, redireciona |
+| Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, aplica rate limit, redireciona |
 | Middleware | `src/proxy.ts` | Protege rotas `/admin/*`, verifica JWT |
 | Auth Guard | `src/lib/auth/require-admin.ts` | Verifica cookie JWT em APIs |
 | Rate Limiter | `src/lib/redis/rate-limit.ts` | Lua script p/ sliding window |
