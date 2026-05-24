@@ -1,0 +1,27 @@
+import type { SVGAttributes } from "react";
+
+export function Logo(props: SVGAttributes<SVGSVGElement>) {
+  return (
+    <svg
+      width="222"
+      height="309"
+      viewBox="0 0 222 309"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      {...props}
+    >
+      <path
+        d="M32.7989 273.612L35.3883 0H0V309H152.774V273.612H32.7989Z"
+        fill="currentColor"
+      />
+      <path
+        d="M67.324 100.986V135.511H188.162V273.612H221.824V100.986H67.324Z"
+        fill="currentColor"
+      />
+      <path
+        d="M83.7235 221.824V187.299H119.112V221.824H83.7235Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}

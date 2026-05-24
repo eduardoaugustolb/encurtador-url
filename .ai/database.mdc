@@ -1,0 +1,99 @@
+# Database Rules — Drizzle + Postgres
+
+## File Structure
+
+```
+src/lib/db/
+├── index.ts          # client singleton
+├── schema.ts         # single source of truth for all tables
+└── queries/
+    ├── links.ts      # all link-related queries
+    └── analytics.ts  # all analytics/click queries
+```
+
+Never write Drizzle queries inline in route handlers or Server Actions. All queries go through `src/lib/db/queries/`.
+
+## Client
+
+```ts
+// src/lib/db/index.ts
+import 'server-only'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
+import { env } from '@/env'
+import * as schema from './schema'
+
+const pool = new Pool({ connectionString: env.DATABASE_URL })
+export const db = drizzle(pool, { schema })
+```
+
+## Query Rules
+
+- Every `update` and `delete` must have a `.where()` clause — ESLint `drizzle/enforce-delete-with-where` and `drizzle/enforce-update-with-where` are enabled
+- Prefer `db.query.*` (relational API) for reads with joins
+- Prefer `db.insert/update/delete` for mutations
+- Always use `returning()` after insert/update to get the resulting row
+
+## Cursor Pagination Pattern
+
+```ts
+// src/lib/db/queries/links.ts
+export async function paginateLinks({ cursor, limit = 20 }: PaginateInput) {
+  const decoded = cursor
+    ? (JSON.parse(atob(cursor)) as { createdAt: string; id: string })
+    : null
+
+  const rows = await db
+    .select()
+    .from(links)
+    .where(
+      decoded
+        ? or(
+            lt(links.createdAt, new Date(decoded.createdAt)),
+            and(
+              eq(links.createdAt, new Date(decoded.createdAt)),
+              lt(links.id, decoded.id)
+            )
+          )
+        : undefined
+    )
+    .orderBy(desc(links.createdAt), desc(links.id))
+    .limit(limit + 1)
+
+  const hasMore = rows.length > limit
+  const data = hasMore ? rows.slice(0, limit) : rows
+  const last = data.at(-1)
+
+  return {
+    data,
+    nextCursor: hasMore && last
+      ? btoa(JSON.stringify({ createdAt: last.createdAt, id: last.id }))
+      : null,
+  }
+}
+```
+
+## Migration Workflow
+
+```bash
+# After changing schema.ts
+npx drizzle-kit generate   # creates SQL migration in drizzle/
+npx drizzle-kit migrate    # applies to DB
+
+# Check schema is in sync
+npx drizzle-kit check
+```
+
+Never edit generated migration files manually. If a migration needs adjusting, generate a new one.
+
+## Index Strategy
+
+Add indexes for:
+- All FK columns (Drizzle does not add these automatically)
+- Columns used in `.where()` filters on the hot path
+- Composite indexes for frequent multi-column filters
+
+Current indexes defined in schema:
+- `clicks_link_id_idx` on `(link_id)`
+- `clicks_clicked_at_idx` on `(clicked_at)`
+- `clicks_link_id_clicked_at_idx` on `(link_id, clicked_at)` — analytics range queries

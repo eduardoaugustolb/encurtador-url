@@ -1,3 +1,13 @@
+<!-- BEGIN:package-manager -->
+# Package Manager
+
+This project uses **bun** as the package manager. Do NOT use npm or pnpm.
+- Install dependencies: `bun install`
+- Add packages: `bun add <package>`
+- Dev dependencies: `bun add -d <package>`
+- Run scripts: `bun run <script>`
+<!-- END:package-manager -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

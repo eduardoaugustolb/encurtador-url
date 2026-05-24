@@ -1,0 +1,91 @@
+# Next.js 16 Rules
+
+## Runtime Boundaries
+
+```
+middleware.ts  →  Edge Runtime only
+                  ✅ slug resolution, redirects
+                  ❌ cookies, DB, heavy Node.js APIs
+
+proxy.ts       →  Node.js Runtime
+                  ✅ auth guards, cookie reading, session verification
+                  ✅ all /admin/** protection
+                  ❌ slug redirect logic
+```
+
+Never mix these responsibilities. If you need to read a cookie in a redirect — you're doing it wrong. Resolve at the DB layer in `proxy.ts` and redirect from there.
+
+## use cache — Rules
+
+Every cached function or component must have all three:
+
+```ts
+"use cache"                  // 1. directive at top of file or function
+cacheLife('minutes')         // 2. lifetime profile
+cacheTag(`resource-${id}`)   // 3. tag for targeted invalidation
+```
+
+Built-in `cacheLife` profiles: `'seconds'` | `'minutes'` | `'hours'` | `'days'` | `'max'`
+
+When to cache what:
+- Dashboard aggregate queries → `'minutes'`
+- Individual link lookups (RSC) → `'hours'`
+- Static/rarely-changing data → `'days'` or `'max'`
+- Redirect path → **never** — Redis handles this
+
+## Invalidation After Mutations
+
+```ts
+// In Server Actions — read-your-writes (immediate)
+import { updateTag } from 'next/cache'
+updateTag(`link-${id}`)
+
+// In API Route Handlers — stale-while-revalidate
+import { revalidateTag } from 'next/cache'
+revalidateTag(`link-${id}`, 'max')   // second arg required in Next.js 16
+```
+
+## Async Params
+
+```ts
+// ✅ Correct
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+}
+
+// ❌ Wrong — breaks in Next.js 16
+export default async function Page({ params }: { params: { id: string } }) {
+  const { id } = params
+}
+```
+
+## Route Handlers
+
+```ts
+// ✅ Correct
+export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+}
+```
+
+## Server Actions
+
+```ts
+'use server'
+
+export async function createLink(input: unknown) {
+  const data = createLinkSchema.parse(input)  // validate first
+  // ...
+  updateTag('links-list')                     // invalidate after mutation
+}
+```
+
+## Client Components
+
+Only add `"use client"` when the component:
+- Uses `useState`, `useEffect`, `useReducer`, or other client hooks
+- Uses TanStack Query hooks (`useInfiniteQuery`, `useQuery`, `useMutation`)
+- Attaches browser event handlers directly
+- Reads `window`, `document`, or other browser globals
+
+Charts with Recharts need `"use client"`. Data-fetching wrappers do not.

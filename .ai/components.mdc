@@ -1,0 +1,126 @@
+# Components & Data Fetching Rules
+
+## Component Decision Tree
+
+```
+Does the component need:
+  - useState / useEffect / useReducer?        → "use client"
+  - TanStack Query hooks?                     → "use client"
+  - onClick, onChange, browser event?         → "use client"
+  - window / document / navigator?            → "use client"
+  - Recharts or other render-time libs?       → "use client"
+  Otherwise                                   → Server Component (default)
+```
+
+When in doubt: start as a Server Component. Add `"use client"` only when the error or requirement forces it.
+
+## Infinite Scroll Pattern
+
+Every infinite list in the app follows this exact pattern.
+
+### Hook
+
+```ts
+// src/lib/hooks/use-infinite-links.ts
+"use client"
+
+import { useInfiniteQuery } from '@tanstack/react-query'
+
+export function useInfiniteLinks(filters?: LinkFilters) {
+  return useInfiniteQuery({
+    queryKey: ['links', filters],
+    queryFn: ({ pageParam }) =>
+      fetch(`/api/links?${buildParams({ cursor: pageParam, ...filters })}`).then(r => r.json()),
+    getNextPageParam: (last: PaginatedResponse<Link>) => last.nextCursor ?? undefined,
+    initialPageParam: undefined as string | undefined,
+  })
+}
+```
+
+### Component
+
+```tsx
+// src/components/links/link-list.tsx
+"use client"
+
+import { useInfiniteLinks } from '@/lib/hooks/use-infinite-links'
+import { useIntersection } from '@/lib/hooks/use-intersection'
+
+export function LinkList() {
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteLinks()
+  const ref = useIntersection(() => { if (hasNextPage) fetchNextPage() })
+
+  const links = data?.pages.flatMap(p => p.data) ?? []
+
+  return (
+    <>
+      {links.map(link => <LinkCard key={link.id} link={link} />)}
+      <div ref={ref}>
+        {isFetchingNextPage && <Spinner />}
+      </div>
+    </>
+  )
+}
+```
+
+The intersection observer sentinel `<div>` is always the last child — never inside the list.
+
+## Mutations
+
+All mutations use `useMutation` and invalidate the relevant query key on success:
+
+```ts
+const mutation = useMutation({
+  mutationFn: (data: CreateLinkInput) =>
+    fetch('/api/links', { method: 'POST', body: JSON.stringify(data) }).then(r => r.json()),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['links'] })
+  },
+})
+```
+
+## Form Validation
+
+Forms use `react-hook-form` + `zodResolver`:
+
+```ts
+const form = useForm<CreateLinkInput>({
+  resolver: zodResolver(createLinkSchema),
+  defaultValues: { destinationUrl: '', title: '', slug: '' },
+})
+```
+
+The Zod schema is imported from `@/lib/validators/link` — the same schema used by the API route. One schema, two places.
+
+## Chart Components
+
+All Recharts wrappers:
+1. Must have `"use client"` at the top
+2. Receive data as props — no fetching inside chart components
+3. Must handle empty state (return a placeholder, never crash on `[]`)
+4. Wrapped in `<ResponsiveContainer width="100%" height={300}>`
+
+```tsx
+"use client"
+
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+
+interface Props {
+  data: { date: string; clicks: number }[]
+}
+
+export function ClicksOverTimeChart({ data }: Props) {
+  if (data.length === 0) return <EmptyChart />
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={data}>
+        <XAxis dataKey="date" />
+        <YAxis />
+        <Tooltip />
+        <Bar dataKey="clicks" />
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+```
