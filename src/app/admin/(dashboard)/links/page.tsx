@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import "server-only";
 import { LinkList } from "@/components/links/link-list";
 import { paginateLinks } from "@/lib/db/queries/links";
+
+export const metadata: Metadata = {
+  title: "Links",
+};
 
 function serializeDate(v: Date): string {
   return v.toISOString();

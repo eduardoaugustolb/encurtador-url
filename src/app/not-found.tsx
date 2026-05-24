@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import { ArrowLeftIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import ASCIIText from "@/components/ascii-text";
 import { Logo } from "@/components/logo";
+
+export const metadata: Metadata = {
+  title: "Página não encontrada",
+  description:
+    "A página que você procura não existe no Bit Link. Volte para a home e tente novamente.",
+};
 
 export default function NotFound() {
   return (
