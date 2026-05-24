@@ -1,8 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { nanoid } from "nanoid";
-import { db } from "@/lib/db";
-import { clicks } from "@/lib/db/schema";
+import { redis } from "@/lib/redis";
 
 interface TrackClickInput {
   linkId: string;
@@ -15,18 +13,22 @@ function sha256hex(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
+const BUFFER_KEY = "clicks:buffer";
+const MAX_BUFFER = 5_000;
+
 export async function trackClick(input: TrackClickInput): Promise<void> {
   try {
     const uaHash = input.userAgent ? sha256hex(input.userAgent) : null;
 
-    await db.insert(clicks).values({
-      id: nanoid(),
+    const entry = JSON.stringify({
       linkId: input.linkId,
-      clickedAt: new Date(),
+      clickedAt: new Date().toISOString(),
       referrer: input.referrer,
       country: input.country?.slice(0, 2) ?? null,
       uaHash,
     });
+
+    await redis.pipeline().lpush(BUFFER_KEY, entry).ltrim(BUFFER_KEY, 0, MAX_BUFFER - 1).exec();
   } catch {
     // intentionally swallowed — tracking MUST NOT affect redirect
   }

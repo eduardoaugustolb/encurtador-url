@@ -51,15 +51,29 @@ O dashboard de analytics tem um botão **"Limpar Cache"** que invalida todos os 
 
 URLs de destino passam por `validateDestinationUrl()`, que faz parse do hostname e verifica se o IP resolve para range privado (10.x, 172.16-31.x, 192.168.x, 127.x, etc.). Bloqueia tentativas de usar o encurtador para atingir serviços internos.
 
-### 7. Tracking de Cliques Direto no PostgreSQL
+### 7. Buffer de Cliques com Flush Confiável
 
-Clicks são inseridos diretamente no PostgreSQL via `after()` callback, sem buffer intermediário:
+Clicks de redirect são inseridos primeiro no Redis (`LPUSH` + `LTRIM`, O(1)) para não bloquear o redirect. Um flush confiável persiste os dados no PostgreSQL:
 
 ```
-Redirect → after() → trackClick() → INSERT INTO clicks
+Redirect → after() → LPUSH Redis → LTRIM (cap 5000)
+                                         ↓
+Analytics consultado → flushClickBuffer() → LRANGE → INSERT batch → LTRIM start=N
 ```
 
-O `after()` garante que o redirect (307) seja enviado ao cliente antes da inserção do click. O Redis é usado apenas como **cache de leitura** (slugs, rate limit), nunca como buffer de escrita. Dados no PostgreSQL são a fonte da verdade; o cache pode ser limpo sem perda de dados.
+O uso de `LTRIM` em vez de `DEL` garante que dados já persistidos não sejam re-inseridos mesmo em caso de falha parcial.
+
+### 8. Cache de Slugs (Cache-Aside com Redis)
+
+O cache de slugs segue o padrão **cache-aside**: o Redis é populado a partir do PostgreSQL e pode ser limpo sem perda de dados:
+
+```
+1. Busca slug no Redis
+2. Se existir (cache hit) → usa (24h TTL)
+3. Se não existir (cache miss) → busca no PG → popula cache
+```
+
+O cache é invalidado automaticamente ao criar, atualizar ou deletar links (`invalidateSlug()`). O botão "Limpar Cache" no dashboard permite limpeza manual.
 
 ### 8. Cursor-Based Pagination
 
