@@ -14,10 +14,10 @@ sequenceDiagram
 
     Note over V,DB: ─── 1/3 — Rate Limit (100 req/min) ───
     V->>N: GET /meu-slug
-    N->>RL: rateLimit("meu-slug")
-    RL->>RL: script Lua atômico
+    N->>RL: checkRateLimit("slug-resolve", ip)
+    RL->>RL: script Lua atômico (sorted set)
     alt Excedeu limite
-        RL-->>V: 429 Too Many Requests
+        RL-->>V: 404 (sem indicar motivo)
         Note over V: Fim — não prossegue
     end
 
@@ -37,14 +37,16 @@ sequenceDiagram
         N-->>V: 404
     else Slug válido
         N->>N: after() → trackClick()
+        Note over N: trackClick usa pipeline Redis<br/>(LPUSH + LTRIM, não insere direto no PG)
         N-->>V: 307 Redirect → destinationUrl
     end
 ```
 
 ### Pontos-chave:
-- **Rate limit** vem primeiro — evita trabalho desnecessário
+- **Rate limit** roda em paralelo com slug resolution (`Promise.all`)
 - **Cache-aside**: Redis primeiro, PG depois
-- **trackClick()** roda dentro de `after()` — nunca bloqueia o redirect
+- **trackClick()** escreve em pipeline Redis, não direto no PostgreSQL
+- **after()** substitui o padrão waitUntil anterior
 - **307 redirect**: método HTTP preservado (GET permanece GET)
 
 ---
@@ -63,7 +65,7 @@ sequenceDiagram
 
     Note over A,J: ─── 1/3 — Exibição do formulário ───
     A->>P: GET /admin/login
-    P-->>A: Página com formulário
+    P-->>A: Página com formulário (GSAP animation)
 
     Note over A,J: ─── 2/3 — Rate Limit + Senha ───
     A->>API: POST { password }
@@ -90,7 +92,7 @@ sequenceDiagram
 ### Pontos-chave:
 - **timingSafeEqual** — comparação em tempo constante contra timing attack
 - **5 req/min** — proteção contra brute force
-- **Cookie HttpOnly** — não acessível via JS
+- **Cookie HttpOnly + SameSite=Strict** — não acessível via JS
 
 ---
 
@@ -105,39 +107,43 @@ sequenceDiagram
     participant G as Guards
     participant DB as PostgreSQL
     participant AUD as Audit Log
+    participant C as Redis Cache
 
-    Note over A,AUD: ─── CREATE — POST /api/links ───
+    Note over A,C: ─── CREATE — POST /api/links ───
     A->>API: POST { destinationUrl, title? }
-    API->>G: Auth + Rate Limit + CSRF + Zod + SSRF
+    API->>G: requireAdminWithRateLimit + validateOrigin + Zod + SSRF
     alt Validação falhou
-        G-->>A: 400 / 422
+        G-->>A: 400 / 403 / 422
         Note over A: Fim
     else Tudo OK
         API->>API: nanoid(7) como slug
         API->>DB: INSERT INTO links
-        API->>AUD: INSERT link.create
+        API->>C: invalidateSlug() (limpa cache)
+        API->>AUD: INSERT audit_log
         API-->>A: 201 { link }
     end
 
-    Note over A,AUD: ─── UPDATE — PATCH /api/links/:id ───
+    Note over A,C: ─── UPDATE — PATCH /api/links/:id ───
     A->>API: PATCH /api/links/:id
-    API->>G: Auth + Rate Limit + CSRF + Zod + SSRF
+    API->>G: requireAdminWithRateLimit + validateOrigin + Zod + SSRF
     alt Validação falhou
-        G-->>A: 400 / 422
+        G-->>A: 400 / 403 / 422
         Note over A: Fim
     else Tudo OK
         API->>DB: UPDATE links SET … WHERE id = ?
-        API->>AUD: INSERT link.update (before/after)
+        API->>C: invalidateSlug() (limpa cache)
+        API->>AUD: INSERT audit_log (before/after)
         API-->>A: 200 { link }
     end
 
-    Note over A,AUD: ─── DELETE — DELETE /api/links/:id ───
+    Note over A,C: ─── DELETE — DELETE /api/links/:id ───
     A->>API: DELETE /api/links/:id
-    API->>G: Auth + Rate Limit + CSRF
+    API->>G: requireAdminWithRateLimit + validateOrigin
     alt Autorizado
         API->>DB: DELETE links WHERE id = ?
         Note over DB: ON DELETE CASCADE<br/>remove clicks também
-        API->>AUD: INSERT link.delete
+        API->>C: invalidateSlug()
+        API->>AUD: INSERT audit_log
         API-->>A: 204 No Content
     end
 ```
@@ -158,7 +164,7 @@ sequenceDiagram
 
     Note over A,DB: ─── 1/3 — Flush: Redis → PostgreSQL ───
     A->>SC: GET /admin/analytics
-    SC->>F: flushClickBuffer()
+    SC->>F: flushClickBuffer() (com lock distribuído)
     F->>R: LRANGE clicks:buffer
     R-->>F: [click, click, …]
     F->>DB: INSERT batch
@@ -170,22 +176,23 @@ sequenceDiagram
     SC->>SC: getClicksOverTime(from, to)
     SC->>SC: getTopLinks()
     SC->>SC: getTopReferrers()
+    Note over SC: Cada query chama<br/>flushClickBuffer() primeiro
     SC->>DB: 4 queries paralelas
     DB-->>SC: summary, clicks, top, referrers
-    Note over SC: SSR com dados iniciais
     SC-->>A: Página renderizada com gráficos
 
     Note over A,DB: ─── 3/3 — Mudança de filtro (client-side) ───
     A->>A: Seleciona nova data
     A->>API: GET /api/analytics/…?from=X&to=Y
-    API->>F: flushClickBuffer()
+    API->>API: flushClickBuffer() antes de cada query
     API->>DB: query com filtro
     DB-->>API: dados filtrados
     API-->>A: JSON → recharts atualiza
 ```
 
 ### Pontos-chave:
-- **flushClickBuffer()** é chamado antes de toda query de analytics
+- **flushClickBuffer()** é chamado antes de toda query de analytics (não usa `use cache`)
+- **Lock distribuído** (SET NX PX 30000) previne duplicação entre 4 chamadas paralelas
 - **LTRIM** remove só os registros processados, nunca dados concorrentes
 - SSR envia dados iniciais; mudanças de filtro disparam fetch no client
 - Validação de data: máximo 365 dias de janela
@@ -203,17 +210,14 @@ flowchart TB
     C --> D{"slug resolvido<br/>com sucesso?"}
 
     D -->|Não| F["Retorna<br/>sem fazer nada"]
-    D -->|Sim| E["Extrair dados:<br/>referrer · user-agent · IP"]
+    D -->|Sim| E["Extrair dados:<br/>referrer · user-agent · country"]
 
-    E --> G["Gerar nanoid"]
-    E --> H["Gerar uaHash<br/>(SHA-256 do UA)"]
+    E --> G["Calcular uaHash<br/>(SHA-256 via crypto)"]
 
     G --> I["Pipeline Redis<br/>LPUSH + LTRIM"]
-    H --> I
-
     I --> J["Redis clicks:buffer<br/>(máx 5.000)"]
 
-    K["Analytics consultado<br/>ou cron job"] --> L["flushClickBuffer()"]
+    K["flushClickBuffer()<br/>(chamado antes de analytics)"] --> L["acquireLock()"]
     L --> M["LRANGE → INSERT batch → LTRIM N -1"]
     M --> N[("PostgreSQL<br/>tabela clicks")]
 ```

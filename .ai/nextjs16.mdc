@@ -3,46 +3,43 @@
 ## Runtime Boundaries
 
 ```
-middleware.ts  →  Edge Runtime only
-                  ✅ slug resolution, redirects
-                  ❌ cookies, DB, heavy Node.js APIs
-
 proxy.ts       →  Node.js Runtime
-                  ✅ auth guards, cookie reading, session verification
-                  ✅ all /admin/** protection
-                  ❌ slug redirect logic
+                   ✅ auth guards, cookie reading, session verification
+                   ✅ /admin/:path* protection via config.matcher
+
+src/app/[slug]/route.ts  →  Node.js Runtime
+                            ✅ slug resolution, Redis lookup, redirect
+                            ✅ rate limiting via ioredis Lua script
+                            ✅ fire-and-forget tracking via after()
 ```
 
-Never mix these responsibilities. If you need to read a cookie in a redirect — you're doing it wrong. Resolve at the DB layer in `proxy.ts` and redirect from there.
+There is **no `middleware.ts`** in this project. All interception happens in `proxy.ts` (auth) and `[slug]/route.ts` (redirect).
 
-## use cache — Rules
-
-Every cached function or component must have all three:
+## `after()` — Fire-and-Forget Pattern
 
 ```ts
-"use cache"                  // 1. directive at top of file or function
-cacheLife('minutes')         // 2. lifetime profile
-cacheTag(`resource-${id}`)   // 3. tag for targeted invalidation
+import { after } from 'next/server'
+
+after(async () => {
+  await trackClick({ linkId, referrer, country, userAgent })
+})
 ```
 
-Built-in `cacheLife` profiles: `'seconds'` | `'minutes'` | `'hours'` | `'days'` | `'max'`
+Use `after()` for non-blocking background work after the response is sent. Replaces the older `waitUntil` pattern.
 
-When to cache what:
-- Dashboard aggregate queries → `'minutes'`
-- Individual link lookups (RSC) → `'hours'`
-- Static/rarely-changing data → `'days'` or `'max'`
-- Redirect path → **never** — Redis handles this
+## `use cache` — Not Used in This Project
+
+This project does not use the `"use cache"` directive. Analytics queries call `flushClickBuffer()` before querying Postgres directly for read-your-writes consistency.
 
 ## Invalidation After Mutations
 
+Slug cache is invalidated via Redis directly:
 ```ts
-// In Server Actions — read-your-writes (immediate)
-import { updateTag } from 'next/cache'
-updateTag(`link-${id}`)
+// After create/update/delete link
+await invalidateSlug(link.slug)
 
-// In API Route Handlers — stale-while-revalidate
-import { revalidateTag } from 'next/cache'
-revalidateTag(`link-${id}`, 'max')   // second arg required in Next.js 16
+// Full cache wipe
+await clearSlugCache()  // SCAN + DEL on slug:*
 ```
 
 ## Async Params
@@ -63,7 +60,7 @@ export default async function Page({ params }: { params: { id: string } }) {
 
 ```ts
 // ✅ Correct
-export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
 }
 ```
@@ -73,10 +70,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 ```ts
 'use server'
 
-export async function createLink(input: unknown) {
-  const data = createLinkSchema.parse(input)  // validate first
-  // ...
-  updateTag('links-list')                     // invalidate after mutation
+export async function logoutAction() {
+  const cookieStore = await cookies()
+  cookieStore.delete(getCookieName())
+  redirect('/')
 }
 ```
 
@@ -85,6 +82,7 @@ export async function createLink(input: unknown) {
 Only add `"use client"` when the component:
 - Uses `useState`, `useEffect`, `useReducer`, or other client hooks
 - Uses TanStack Query hooks (`useInfiniteQuery`, `useQuery`, `useMutation`)
+- Uses GSAP animations
 - Attaches browser event handlers directly
 - Reads `window`, `document`, or other browser globals
 

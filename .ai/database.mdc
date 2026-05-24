@@ -8,7 +8,8 @@ src/lib/db/
 ├── schema.ts         # single source of truth for all tables
 └── queries/
     ├── links.ts      # all link-related queries
-    └── analytics.ts  # all analytics/click queries
+    ├── analytics.ts  # all analytics/click queries
+    └── audit.ts      # audit log inserts
 ```
 
 Never write Drizzle queries inline in route handlers or Server Actions. All queries go through `src/lib/db/queries/`.
@@ -77,11 +78,11 @@ export async function paginateLinks({ cursor, limit = 20 }: PaginateInput) {
 
 ```bash
 # After changing schema.ts
-npx drizzle-kit generate   # creates SQL migration in drizzle/
-npx drizzle-kit migrate    # applies to DB
+bunx drizzle-kit generate   # creates SQL migration in drizzle/
+bunx drizzle-kit migrate    # applies to DB
 
 # Check schema is in sync
-npx drizzle-kit check
+bunx drizzle-kit check
 ```
 
 Never edit generated migration files manually. If a migration needs adjusting, generate a new one.
@@ -97,3 +98,40 @@ Current indexes defined in schema:
 - `clicks_link_id_idx` on `(link_id)`
 - `clicks_clicked_at_idx` on `(clicked_at)`
 - `clicks_link_id_clicked_at_idx` on `(link_id, clicked_at)` — analytics range queries
+
+## Tables
+
+### links
+
+| Column | Type | Notes |
+|---|---|---|
+| id | text PK | nanoid |
+| slug | text UNIQUE | URL-safe identifier |
+| destination_url | text | Target URL |
+| title | text | Optional label |
+| is_active | boolean | Default true |
+| created_at | timestamp with tz | Auto |
+| updated_at | timestamp with tz | Auto on update |
+
+### clicks
+
+| Column | Type | Notes |
+|---|---|---|
+| id | text PK | nanoid |
+| link_id | text FK → links.id | CASCADE delete |
+| clicked_at | timestamp with tz | From server |
+| referrer | text | Full URL |
+| country | char(2) | ISO 3166-1 alpha-2 |
+| ua_hash | text | SHA-256 of UA |
+
+### audit_log
+
+| Column | Type | Notes |
+|---|---|---|
+| id | text PK | audit_uuid |
+| action | text | e.g. link.create |
+| entity_type | text | e.g. link |
+| entity_id | text | |
+| payload | jsonb | before/after |
+| ip | text | |
+| created_at | timestamp with tz | Auto |

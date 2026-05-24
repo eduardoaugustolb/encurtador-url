@@ -9,6 +9,7 @@ Does the component need:
   - onClick, onChange, browser event?         → "use client"
   - window / document / navigator?            → "use client"
   - Recharts or other render-time libs?       → "use client"
+  - GSAP animations?                          → "use client"
   Otherwise                                   → Server Component (default)
 ```
 

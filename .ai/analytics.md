@@ -2,41 +2,29 @@
 
 ## Scope
 
-Analytics queries, chart data shapes, CSV export, and the `use cache` strategy for dashboard performance.
+Analytics queries, chart data shapes, CSV export, and the Redis buffer flush mechanism.
+
+**Important:** Analytics queries do **not** use `"use cache"`. They call `flushClickBuffer()` before each query to ensure read-your-writes consistency, then query Postgres directly.
 
 ---
 
 ## Query Functions
 
-All functions live in `src/lib/db/queries/analytics.ts`. All are cached with `"use cache"`.
+All functions live in `src/lib/db/queries/analytics.ts`. Each calls `flushClickBuffer()` first.
 
 ### Summary
 
 ```ts
-"use cache"
 export async function getAnalyticsSummary(from: Date, to: Date, linkId?: string) {
-  cacheTag('analytics-summary')
-  cacheLife('minutes')
+  await flushClickBuffer()
 
-  const base = db
+  const [{ count: totalClicks }] = await db
     .select({ count: count() })
     .from(clicks)
-    .where(
-      and(
-        gte(clicks.clickedAt, from),
-        lte(clicks.clickedAt, to),
-        linkId ? eq(clicks.linkId, linkId) : undefined
-      )
-    )
+    .where(and(gte(clicks.clickedAt, from), lte(clicks.clickedAt, to), linkId ? eq(clicks.linkId, linkId) : undefined))
 
-  const [{ count: totalClicks }] = await base
-
-  // Peak day sub-query
   const peakRow = await db
-    .select({
-      day:    sql<string>`DATE(clicked_at)`,
-      clicks: count(),
-    })
+    .select({ day: sql<string>`DATE(clicked_at)`, clicks: count() })
     .from(clicks)
     .where(and(gte(clicks.clickedAt, from), lte(clicks.clickedAt, to)))
     .groupBy(sql`DATE(clicked_at)`)
@@ -54,24 +42,13 @@ export async function getAnalyticsSummary(from: Date, to: Date, linkId?: string)
 ### Clicks Over Time
 
 ```ts
-"use cache"
 export async function getClicksOverTime(from: Date, to: Date, linkId?: string) {
-  cacheTag('analytics-clicks')
-  cacheLife('minutes')
+  await flushClickBuffer()
 
   return db
-    .select({
-      date:   sql<string>`DATE(clicked_at)`,
-      clicks: count(),
-    })
+    .select({ date: sql<string>`DATE(clicked_at)`, clicks: count() })
     .from(clicks)
-    .where(
-      and(
-        gte(clicks.clickedAt, from),
-        lte(clicks.clickedAt, to),
-        linkId ? eq(clicks.linkId, linkId) : undefined
-      )
-    )
+    .where(and(gte(clicks.clickedAt, from), lte(clicks.clickedAt, to), linkId ? eq(clicks.linkId, linkId) : undefined))
     .groupBy(sql`DATE(clicked_at)`)
     .orderBy(asc(sql`DATE(clicked_at)`))
 }
@@ -80,18 +57,11 @@ export async function getClicksOverTime(from: Date, to: Date, linkId?: string) {
 ### Top Links
 
 ```ts
-"use cache"
 export async function getTopLinks(from: Date, to: Date, limit = 10) {
-  cacheTag('analytics-top-links')
-  cacheLife('minutes')
+  await flushClickBuffer()
 
   return db
-    .select({
-      linkId: clicks.linkId,
-      slug:   links.slug,
-      title:  links.title,
-      clicks: count(),
-    })
+    .select({ linkId: clicks.linkId, slug: links.slug, title: links.title, clicks: count() })
     .from(clicks)
     .innerJoin(links, eq(clicks.linkId, links.id))
     .where(and(gte(clicks.clickedAt, from), lte(clicks.clickedAt, to)))
@@ -104,38 +74,23 @@ export async function getTopLinks(from: Date, to: Date, limit = 10) {
 ### Top Referrers
 
 ```ts
-"use cache"
 export async function getTopReferrers(from: Date, to: Date, linkId?: string) {
-  cacheTag('analytics-referrers')
-  cacheLife('minutes')
+  await flushClickBuffer()
 
   const rows = await db
     .select({ referrer: clicks.referrer, clicks: count() })
     .from(clicks)
-    .where(
-      and(
-        gte(clicks.clickedAt, from),
-        lte(clicks.clickedAt, to),
-        linkId ? eq(clicks.linkId, linkId) : undefined
-      )
-    )
+    .where(and(gte(clicks.clickedAt, from), lte(clicks.clickedAt, to), linkId ? eq(clicks.linkId, linkId) : undefined))
     .groupBy(clicks.referrer)
     .orderBy(desc(count()))
     .limit(20)
 
-  return rows.map(r => ({
-    hostname: parseHostname(r.referrer),
-    clicks: Number(r.clicks),
-  }))
+  return rows.map(r => ({ hostname: parseHostname(r.referrer), clicks: Number(r.clicks) }))
 }
 
 function parseHostname(referrer: string | null): string {
   if (!referrer) return 'direct'
-  try {
-    return new URL(referrer).hostname
-  } catch {
-    return 'unknown'
-  }
+  try { return new URL(referrer).hostname } catch { return 'unknown' }
 }
 ```
 
@@ -145,61 +100,29 @@ function parseHostname(referrer: string | null): string {
 
 ```ts
 // src/app/api/analytics/export/route.ts
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url)
-  const from   = new Date(searchParams.get('from')!)
-  const to     = new Date(searchParams.get('to')!)
-  const linkId = searchParams.get('linkId') ?? undefined
-
-  const rows = await db
-    .select({
-      clickedAt: clicks.clickedAt,
-      referrer:  clicks.referrer,
-      country:   clicks.country,
-      slug:      links.slug,
-    })
-    .from(clicks)
-    .innerJoin(links, eq(clicks.linkId, links.id))
-    .where(
-      and(
-        gte(clicks.clickedAt, from),
-        lte(clicks.clickedAt, to),
-        linkId ? eq(clicks.linkId, linkId) : undefined
-      )
-    )
-    .orderBy(desc(clicks.clickedAt))
-
-  const csv = [
-    'clicked_at,slug,referrer,country',
-    ...rows.map(r =>
-      [r.clickedAt.toISOString(), r.slug, r.referrer ?? '', r.country ?? ''].join(',')
-    ),
-  ].join('\n')
-
-  return new Response(csv, {
-    headers: {
-      'Content-Type':        'text/csv',
-      'Content-Disposition': `attachment; filename="clicks-export.csv"`,
-    },
-  })
-}
+// Uses analyticsQuerySchema for validation (max 365 day range)
+// Generates CSV with click data, attaches as download
 ```
+
+Key details:
+- Validates input via `analyticsQuerySchema` (Zod — max 365 day range)
+- Limits rows to 100,000
+- Escapes CSV values to prevent injection (formulas starting with `=`, `+`, `-`, `@`)
+- Auth: `requireAdminWithRateLimit`
 
 ---
 
-## Cache Invalidation After Tracking
+## flushClickBuffer — Invoked Automatically
 
-After bulk inserts (or periodically), invalidate analytics caches:
+Every analytics query function calls `flushClickBuffer()` at the start. This:
 
-```ts
-// In a Server Action or after trackClick batches
-revalidateTag('analytics-summary', 'minutes')
-revalidateTag('analytics-clicks', 'minutes')
-revalidateTag('analytics-top-links', 'minutes')
-revalidateTag('analytics-referrers', 'minutes')
-```
+1. Acquires a distributed Redis lock (`SET NX PX 30000`)
+2. Reads buffered clicks from `clicks:buffer` (Redis list)
+3. Batch-inserts them into Postgres
+4. Uses `LTRIM` to remove only processed items (never `DEL`)
+5. Releases the lock
 
-For the v1 dashboard, a manual "Refresh" button calling these revalidations is acceptable.
+The lock prevents duplicate inserts when 4 analytics queries run in parallel via `Promise.all`.
 
 ---
 
