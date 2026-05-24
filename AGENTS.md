@@ -1,3 +1,15 @@
+<!-- BEGIN:mandatory-checklist -->
+# ⚠️ Checklist obrigatório — execute ANTES de qualquer implementação
+
+**TODO: Antes de começar a codificar, execute estes 3 passos em ordem:**
+
+1. **Branch**: `git branch` — estou em uma sub branch (`feature/*`, `fix/*`)? Se estiver na `main`, PARE e crie uma branch.
+2. **Docs**: Leia os arquivos relevantes em `docs/` e em `node_modules/next/dist/docs/` ANTES de escrever código novo.
+3. **Commit**: Só commite na sub branch, nunca na `main`. Depois do commit, crie PR e aguarde review.
+
+**Após implementar:** Se o comportamento do sistema mudou, atualize os `docs/` afetados.
+<!-- END:mandatory-checklist -->
+
 <!-- BEGIN:package-manager -->
 # Package Manager
 
