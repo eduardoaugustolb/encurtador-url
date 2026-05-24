@@ -81,35 +81,31 @@ sequenceDiagram
     participant R as Redis
     participant P as PostgreSQL
 
-    rect rgb(255, 252, 235)
-        Note over U,P: 🔀 Redirect Flow
-        U->>N: GET /abc1234
-        N->>MW: middleware
-        MW->>SC: [slug]/page
+    Note over U,P: ─── Redirect Flow ───
+    U->>N: GET /abc1234
+    N->>MW: middleware
+    MW->>SC: [slug]/page
 
-        SC->>R: resolveSlug("abc1234")
-        alt Cache Hit
-            R-->>SC: { destinationUrl }
-        else Cache Miss
-            SC->>P: SELECT links WHERE slug = ?
-            P-->>SC: link data
-            SC->>R: SET slug:… (TTL 24h)
-        end
-
-        SC-->>U: 307 Redirect
+    SC->>R: resolveSlug("abc1234")
+    alt Cache Hit
+        R-->>SC: { destinationUrl }
+    else Cache Miss
+        SC->>P: SELECT links WHERE slug = ?
+        P-->>SC: link data
+        SC->>R: SET slug:… (TTL 24h)
     end
 
-    rect rgb(235, 245, 255)
-        Note over U,P: 🔐 Admin API Flow
-        U->>N: GET /api/links
-        N->>MW: middleware (auth JWT)
-        MW->>API: requireAdminWithRateLimit
+    SC-->>U: 307 Redirect
 
-        API->>R: rate limit (Lua script)
-        API->>P: paginateLinks(cursor)
-        P-->>API: { data, nextCursor }
-        API-->>U: JSON response
-    end
+    Note over U,P: ─── Admin API Flow ───
+    U->>N: GET /api/links
+    N->>MW: middleware (auth JWT)
+    MW->>API: requireAdminWithRateLimit
+
+    API->>R: rate limit (Lua script)
+    API->>P: paginateLinks(cursor)
+    P-->>API: { data, nextCursor }
+    API-->>U: JSON response
 ```
 
 ## Componentes e suas Responsabilidades
