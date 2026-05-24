@@ -116,14 +116,14 @@ ORDER BY clicks DESC
 LIMIT 20;
 ```
 
-### Insert de Click (tracking)
+### Batch Insert Clicks (flush do buffer Redis)
 
 ```sql
 INSERT INTO clicks (id, link_id, clicked_at, referrer, country, ua_hash)
-VALUES ($1, $2, $3, $4, $5, $6);
+VALUES ($1, $2, $3, $4, $5, $6), ...;
 ```
 
-Cada click é inserido individualmente dentro do callback `after()` do redirect — sem buffer Redis.
+Cada click é primeiro armazenado no Redis (`clicks:buffer`) via `LPUSH` durante o redirect. O `flushClickBuffer()` lê do Redis, insere em batch no PostgreSQL e remove do Redis via `LTRIM`.
 
 ## Conexão
 

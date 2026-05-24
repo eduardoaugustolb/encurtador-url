@@ -35,7 +35,7 @@ bun run dev
 
 - **Next.js 16** — App Router, Server Components, React 19
 - **Drizzle ORM** — Type-safe SQL, schema declarativo
-- **Redis (ioredis)** — Cache de slugs, rate limiter
+- **Redis (ioredis)** — Cache de slugs, rate limiter, buffer de clicks
 - **PostgreSQL (Neon)** — Dados persistentes
 - **JWT (jose)** — Sessão admin stateless
 - **Tailwind v4** — Estilização

@@ -4,6 +4,7 @@ import { requireAdminWithRateLimit } from "@/lib/auth/require-admin-with-rate-li
 import { validateOrigin } from "@/lib/auth/validate-origin";
 import { recordAudit } from "@/lib/db/queries/audit";
 import { createLink, paginateLinks } from "@/lib/db/queries/links";
+import { invalidateSlug } from "@/lib/redis";
 import {
   createLinkSchema,
   validateDestinationUrl,
@@ -72,6 +73,8 @@ export async function POST(req: Request) {
     destinationUrl,
     title: title ?? null,
   });
+
+  await invalidateSlug(linkSlug);
 
   recordAudit({
     action: "link.create",
