@@ -5,7 +5,10 @@ import { env } from "@/env";
 import { db } from "@/lib/db";
 import { links } from "@/lib/db/schema";
 
-export const redis = new Redis(env.REDIS_URL);
+export const redis = new Redis(env.REDIS_URL, {
+  keepAlive: 30_000,
+  retryStrategy: (times) => Math.min(times * 100, 3_000),
+});
 
 export type CachedLink = {
   id: string;

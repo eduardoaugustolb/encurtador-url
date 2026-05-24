@@ -23,21 +23,21 @@ export default async function SlugPage({
   const hdrs = await headers();
 
   const ip = hdrs.get("x-forwarded-for") ?? "unknown";
-  const rl = await traceStep("rate-limit", () =>
-    checkRateLimit({
-      windowMs: 60_000,
-      max: 100,
-      key: rateLimitKey("slug-resolve", ip),
-    }),
-  );
+
+  const [rl, link] = await Promise.all([
+    traceStep("rate-limit", () =>
+      checkRateLimit({
+        windowMs: 60_000,
+        max: 100,
+        key: rateLimitKey("slug-resolve", ip),
+      }),
+    ),
+    traceStep("resolve-slug", () => resolveSlug(slug), { slug }),
+  ]);
 
   if (!rl.allowed) {
     notFound();
   }
-
-  const link = await traceStep("resolve-slug", () => resolveSlug(slug), {
-    slug,
-  });
 
   if (!link || !link.isActive) {
     notFound();

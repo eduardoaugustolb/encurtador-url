@@ -2,12 +2,15 @@ import "server-only";
 import { and, asc, count, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clicks, links } from "@/lib/db/schema";
+import { flushClickBuffer } from "@/lib/analytics/flush-clicks";
 
 export async function getAnalyticsSummary(
   from: Date,
   to: Date,
   linkId?: string,
 ) {
+  await flushClickBuffer();
+
   const [{ count: totalClicks }] = await db
     .select({ count: count() })
     .from(clicks)
@@ -38,6 +41,8 @@ export async function getAnalyticsSummary(
 }
 
 export async function getClicksOverTime(from: Date, to: Date, linkId?: string) {
+  await flushClickBuffer();
+
   return db
     .select({
       date: sql<string>`DATE(clicked_at)`,
@@ -56,6 +61,8 @@ export async function getClicksOverTime(from: Date, to: Date, linkId?: string) {
 }
 
 export async function getTopLinks(from: Date, to: Date, limit = 10) {
+  await flushClickBuffer();
+
   return db
     .select({
       linkId: clicks.linkId,
@@ -72,6 +79,8 @@ export async function getTopLinks(from: Date, to: Date, limit = 10) {
 }
 
 export async function getTopReferrers(from: Date, to: Date, linkId?: string) {
+  await flushClickBuffer();
+
   const rows = await db
     .select({ referrer: clicks.referrer, clicks: count() })
     .from(clicks)

@@ -7,6 +7,24 @@ interface RateLimitConfig {
   key: string;
 }
 
+const SCRIPT = `
+  local key = KEYS[1]
+  local window_ms = tonumber(ARGV[1])
+  local limit = tonumber(ARGV[2])
+  local now = tonumber(ARGV[3])
+
+  redis.call('ZREMRANGEBYSCORE', key, 0, now - window_ms)
+  local count = redis.call('ZCARD', key)
+
+  if count >= limit then
+    return {0, count}
+  end
+
+  redis.call('ZADD', key, now, now .. ':' .. count)
+  redis.call('EXPIRE', key, math.ceil(window_ms / 1000))
+  return {1, count + 1}
+`;
+
 export async function checkRateLimit({
   windowMs,
   max,
@@ -14,20 +32,23 @@ export async function checkRateLimit({
 }: RateLimitConfig): Promise<{ allowed: boolean; remaining: number }> {
   try {
     const now = Date.now();
-    const windowStart = now - windowMs;
 
-    await redis.zremrangebyscore(key, 0, windowStart);
+    const result = (await redis.eval(
+      SCRIPT,
+      1,
+      key,
+      String(windowMs),
+      String(max),
+      String(now),
+    )) as [number, number];
 
-    const count = await redis.zcard(key);
+    const allowed = result[0] === 1;
+    const count = result[1];
 
-    if (count >= max) {
-      return { allowed: false, remaining: 0 };
-    }
-
-    await redis.zadd(key, now, `${now}-${Math.random()}`);
-    await redis.expire(key, Math.ceil(windowMs / 1000));
-
-    return { allowed: true, remaining: max - count - 1 };
+    return {
+      allowed,
+      remaining: allowed ? max - count : 0,
+    };
   } catch {
     return { allowed: true, remaining: max };
   }
