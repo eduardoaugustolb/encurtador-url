@@ -19,6 +19,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Este projeto segue o fluxo de **branches isoladas**. Nunca trabalhe diretamente na `main`.
 - Crie sempre uma **sub branch** (`feature/<nome>`, `fix/<nome>`, etc.) para trabalhar de forma isolada e segura
-- Faça merge para a `main` apenas quando a funcionalidade estiver pronta e revisada
+- Faça merge para a `main` apenas quando a funcionalidade estiver pronta e revisada (PR deve ser aprovado — nada de merge direto sem review)
 - Commits devem ser feitos na sub branch, não na main
 <!-- END:git-workflow -->
