@@ -87,7 +87,30 @@ A listagem de links usa **cursor pagination** em vez de `OFFSET`:
 
 A página de links admin usa **React Query** (`useInfiniteLinks`) com `IntersectionObserver` para carregar mais dados conforme o usuário rola a página — sem botão "carregar mais".
 
-### 10. OpenTelemetry Tracing
+### 10. SEO & Metadados
+
+Todas as páginas possuem metadados únicos (title, description, Open Graph, Twitter Card) via `metadata` export do Next.js App Router:
+
+| Página | Título | Descrição |
+|---|---|---|
+| Home | Encurtador de URLs \| Bit Link | Encurte, compartilhe e monitore seus links |
+| 404 | Página não encontrada \| Bit Link | Mensagem amigável em português |
+| Admin | Admin \| Bit Link | Bloqueado para robôs (`noindex`) |
+| Links | Links \| Bit Link | Gerenciamento de links |
+| Analytics | Analytics \| Bit Link | Dashboard de métricas |
+
+Recursos de SEO implementados:
+- **`robots.txt`**: Permite `/`, bloqueia `/admin/`
+- **`sitemap.xml`**: Gerado dinamicamente via `sitemap.ts`
+- **`manifest.webmanifest`**: PWA manifest com ícones e tema escuro
+- **Ícones**: Logo SVG como `icon.svg`, `icon.tsx` (PNG 32x32), `apple-icon.tsx` (180x180)
+- **Open Graph + Twitter Image**: Gerados via `ImageResponse` com logo e gradiente escuro
+- **JSON-LD**: Structured data `WebSite` no `<head>` do root layout
+- **`theme-color`**: `#09090b` via `viewport` export
+- **`lang="pt"`**: HTML lang corrigido para português
+- **Home page**: Conteúdo real substituindo boilerplate Create Next App
+
+### 11. OpenTelemetry Tracing
 
 Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada com spans OTel via `traceStep()`. Em produção (Vercel), os traces são exportados automaticamente.
 

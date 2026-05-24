@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import "server-only";
 import {
   getAnalyticsSummary,
@@ -5,6 +6,10 @@ import {
   getTopLinks,
   getTopReferrers,
 } from "@/lib/db/queries/analytics";
+
+export const metadata: Metadata = {
+  title: "Analytics",
+};
 import { AnalyticsDashboard } from "./analytics-dashboard";
 
 export const dynamic = "force-dynamic";
