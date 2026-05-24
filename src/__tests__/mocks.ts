@@ -9,6 +9,7 @@ export interface MockRedisPipeline {
 export interface MockRedisClient {
   eval: Mock<(script: string, numKeys: number, ...args: string[]) => Promise<unknown>>;
   get: Mock<(key: string) => Promise<string | null>>;
+  set: Mock<(key: string, value: string, ...args: string[]) => Promise<"OK" | null>>;
   setex: Mock<(key: string, seconds: number, value: string) => Promise<"OK">>;
   del: Mock<(key: string) => Promise<number>>;
   lpush: Mock<(key: string, value: string) => Promise<number>>;
@@ -49,6 +50,7 @@ export function createMockRedis(): MockRedisClient {
   return {
     eval: mock(() => Promise.resolve([1, 1])),
     get: mock(() => Promise.resolve(null)),
+    set: mock(() => Promise.resolve("OK")),
     setex: mock(() => Promise.resolve("OK")),
     del: mock(() => Promise.resolve(1)),
     lpush: mock(() => Promise.resolve(1)),
