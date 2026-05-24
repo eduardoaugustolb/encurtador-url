@@ -3,31 +3,37 @@
 ## Stack
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 60, 'rankSpacing': 80}}}%%
 graph TB
-    subgraph Client
-        Browser
+    subgraph Client["🌐 Cliente"]
+        Browser["Browser"]
     end
 
-    subgraph "Next.js 16 (App Router)"
-        MW[Middleware proxy.ts]
-        SC[Server Components]
-        CC[Client Components]
-        API[API Routes]
+    subgraph NextJS["⚡ Next.js 16 (App Router)"]
+        direction TB
+        MW["Middleware proxy.ts"]
+        SC["Server Components"]
+        CC["Client Components"]
+        API["API Routes"]
     end
 
-    subgraph "Services"
-        PG[(PostgreSQL - Neon)]
-        REDIS[(Redis)]
+    subgraph Services["☁️ Serviços"]
+        PG[("PostgreSQL (Neon)")]
+        REDIS[("Redis")]
     end
 
     Browser --> MW
-    MW --> SC
-    MW --> API
-    SC --> PG
-    SC --> REDIS
-    API --> PG
-    API --> REDIS
-    CC --> API
+
+    MW -->|rota pública| SC
+    MW -->|rota /api/*| API
+
+    SC -->|dados persistentes| PG
+    SC -->|cache + rate limit| REDIS
+
+    API -->|CRUD + queries| PG
+    API -->|cache + rate limit| REDIS
+
+    CC -->|fetch| API
 ```
 
 ## Estrutura de Pastas
@@ -64,7 +70,9 @@ src/
 ## Ciclo de Vida de uma Requisição
 
 ```mermaid
+%%{init: {'sequence': {'actorMargin': 55, 'boxMargin': 22}}}%%
 sequenceDiagram
+    autonumber
     participant U as Usuário
     participant N as Next.js
     participant MW as Middleware
@@ -73,28 +81,35 @@ sequenceDiagram
     participant R as Redis
     participant P as PostgreSQL
 
-    Note over U,P: Redirect Flow
-    U->>N: GET /abc1234
-    N->>MW: Next.js middleware
-    MW->>SC: Encaminha para [slug]/page
-    SC->>R: resolveSlug("abc1234")
-    alt Cache hit
-        R-->>SC: { destinationUrl }
-    else Cache miss
-        SC->>P: SELECT * FROM links WHERE slug = ?
-        P-->>SC: result
-        SC->>R: SET slug:abc1234 (TTL 24h)
-    end
-    SC-->>U: 307 Redirect
+    rect rgb(255, 252, 235)
+        Note over U,P: 🔀 Redirect Flow
+        U->>N: GET /abc1234
+        N->>MW: middleware
+        MW->>SC: [slug]/page
 
-    Note over U,P: Admin API Flow
-    U->>N: GET /api/links
-    N->>MW: middleware (auth check)
-    MW->>API: requireAdminWithRateLimit
-    API->>R: rate limit check (Lua)
-    API->>P: paginateLinks()
-    P-->>API: data
-    API-->>U: JSON response
+        SC->>R: resolveSlug("abc1234")
+        alt Cache Hit
+            R-->>SC: { destinationUrl }
+        else Cache Miss
+            SC->>P: SELECT links WHERE slug = ?
+            P-->>SC: link data
+            SC->>R: SET slug:… (TTL 24h)
+        end
+
+        SC-->>U: 307 Redirect
+    end
+
+    rect rgb(235, 245, 255)
+        Note over U,P: 🔐 Admin API Flow
+        U->>N: GET /api/links
+        N->>MW: middleware (auth JWT)
+        MW->>API: requireAdminWithRateLimit
+
+        API->>R: rate limit (Lua script)
+        API->>P: paginateLinks(cursor)
+        P-->>API: { data, nextCursor }
+        API-->>U: JSON response
+    end
 ```
 
 ## Componentes e suas Responsabilidades

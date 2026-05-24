@@ -5,29 +5,35 @@ O Bit Link **não tem** um sistema de filas dedicado (Bull, RabbitMQ, etc.). O p
 ## Pipeline de Tracking de Cliques
 
 ```mermaid
+%%{init: {'flowchart': {'nodeSpacing': 50, 'rankSpacing': 80}}}%%
 flowchart TB
-    subgraph "Redirect (tempo real)"
+    subgraph Redirect["① Redirect (tempo real)"]
+        direction LR
         A["Usuário acessa /slug"] --> B["307 Redirect"]
-        B --- C["after callback"]
+        B -.-> C["after() callback"]
     end
 
-    subgraph "Redis Buffer"
+    subgraph Buffer["② Redis Buffer"]
+        direction TB
         C --> D["LPUSH clicks:buffer"]
-        D --> E["LTRIM clicks:buffer 0 4999"]
-        E --> F["Lista no Redis<br/>máx 5.000 eventos"]
+        D --> E["LTRIM 0 4999"]
+        E --> F["Redis List<br/>máx 5.000 eventos"]
     end
 
-    subgraph "Flush sob demanda"
+    subgraph Flush["③ Flush sob demanda"]
+        direction TB
         G["Admin acessa analytics"] --> H["flushClickBuffer()"]
-        H --> I["LRANGE clicks:buffer 0 -1"]
-        I --> J["INSERT batch no PostgreSQL"]
+        H --> I["LRANGE clicks:buffer"]
+        I --> J["INSERT batch no PG"]
         J --> K["DEL clicks:buffer"]
     end
 
-    subgraph "Dados persistentes"
+    subgraph Storage["④ Dados Persistentes"]
         L[("PostgreSQL<br/>tabela clicks")]
-        J --> L
     end
+
+    F --> H
+    K --> L
 ```
 
 ## Por que esse design?
@@ -51,14 +57,23 @@ flowchart TB
 ### trackClick (src/lib/analytics/track.ts)
 
 ```mermaid
-flowchart LR
-    A["Recebe linkId + Request"] --> B{"slug resolvido?"}
-    B -->|Não| Z["return"]
+%%{init: {'flowchart': {'nodeSpacing': 50, 'rankSpacing': 70}}}%%
+flowchart TB
+    A["trackClick(linkId, Request)"] --> B{"slug<br/>resolvido?"}
+
+    B -->|Não| Z["return (silencioso)"]
+
     B -->|Sim| C["Extrair referrer<br/>do header"]
-    C --> D["Calcular uaHash<br/>= SHA-256(ua)"]
-    D --> E["Gerar nanoid<br/>para o click"]
-    E --> F["Pipeline Redis:<br/>LPUSH + LTRIM"]
-    F --> G["Pipeline.exec<br/>fire-and-forget"]
+    C --> D["Calcular uaHash<br/>(SHA-256 do UA)"]
+
+    D --> E1["Gerar nanoid"]
+    D --> E2["Montar payload JSON<br/>{ linkId, clickedAt,<br/>  referrer, uaHash }"]
+
+    E1 --> F
+    E2 --> F
+
+    F["Pipeline Redis<br/>LPUSH + LTRIM"]
+    F --> G["exec() fire-and-forget<br/>captura erro com .catch()"]
 ```
 
 ```typescript
@@ -72,15 +87,21 @@ pipeline.exec().catch(() => {});
 ### flushClickBuffer (src/lib/analytics/flush-clicks.ts)
 
 ```mermaid
-flowchart LR
+%%{init: {'flowchart': {'nodeSpacing': 50, 'rankSpacing': 70}}}%%
+flowchart TB
     A["flushClickBuffer()"] --> B["LRANGE clicks:buffer"]
-    B --> C{"Tem eventos?"}
-    C -->|Não| F["return"]
-    C -->|Sim| D["Parse JSON + validar"]
-    D --> E["db.insert(clicks).values(...)"]
-    E --> G["DEL clicks:buffer"]
-    G --> H["log success"]
-    E -->|Erro| I["log error<br/>(silencioso)"]
+
+    B --> C{"Tem eventos<br/>no buffer?"}
+
+    C -->|Não| F["return<br/>nada a fazer"]
+
+    C -->|Sim| D["Parse JSON<br/>+ validar campos"]
+    D --> E["db.insert(clicks)<br/>.values(...)"]
+
+    E -->|Sucesso| G["DEL clicks:buffer"]
+    G --> H["console.log success"]
+
+    E -->|Erro| I["console.error<br/>(silencioso —<br/>dados ficam no Redis)"]
 ```
 
 ## E se...?

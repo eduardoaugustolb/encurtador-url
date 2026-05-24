@@ -3,29 +3,41 @@
 ## 1. Redirect (o caminho crítico)
 
 ```mermaid
+%%{init: {'sequence': {'actorMargin': 60, 'boxMargin': 25}}}%%
 sequenceDiagram
+    autonumber
     actor V as Visitante
     participant N as Next.js
     participant RL as Rate Limiter
     participant C as Redis Cache
     participant DB as PostgreSQL
 
-    V->>N: GET /meu-slug
-    N->>RL: rateLimit(100/min)
-    RL->>RL: script Lua atômico
-    alt Rate limited
-        RL-->>V: 429 Too Many Requests
-    else OK
-        RL-->>N: allowed
+    rect rgb(245, 245, 250)
+        Note over V,DB: 1/3 — Rate Limit (100 req/min)
+        V->>N: GET /meu-slug
+        N->>RL: rateLimit("meu-slug")
+        RL->>RL: script Lua atômico
+        alt Excedeu limite
+            RL-->>V: 429 Too Many Requests
+            Note over V: Fim — não prossegue
+        end
+    end
+
+    rect rgb(255, 252, 235)
+        Note over V,DB: 2/3 — Cache-aside (Redis → PostgreSQL)
         N->>C: resolveSlug("meu-slug")
         alt Cache Hit
-            C-->>N: { id, destinationUrl, isActive }
+            C-->>N: { destinationUrl, isActive }
         else Cache Miss
             C--xN: null
-            N->>DB: SELECT FROM links WHERE slug = ?
+            N->>DB: SELECT links WHERE slug = ?
             DB-->>N: link data
-            N->>C: SET slug:meu-slug (TTL 24h)
+            N->>C: SET slug:… (TTL 24h)
         end
+    end
+
+    rect rgb(235, 250, 235)
+        Note over V,DB: 3/3 — Decisão de Redirect
         alt Slug inválido ou inativo
             N-->>V: 404
         else Slug válido
@@ -46,31 +58,44 @@ sequenceDiagram
 ## 2. Admin — Login
 
 ```mermaid
+%%{init: {'sequence': {'actorMargin': 60, 'boxMargin': 20}}}%%
 sequenceDiagram
+    autonumber
     actor A as Admin
     participant P as Login Page
     participant API as /api/auth/login
     participant RL as Rate Limiter
     participant J as JWT
 
-    A->>P: GET /admin/login
-    P-->>A: Página com formulário
+    rect rgb(240, 245, 255)
+        Note over A,J: 1/3 — Exibição do formulário
+        A->>P: GET /admin/login
+        P-->>A: Página com formulário
+    end
 
-    A->>API: POST { password }
-    API->>RL: rateLimit(5/min por IP)
-    alt Rate limited
-        API-->>A: 429
-    else OK
-        API->>API: timingSafeEqual(password, ADMIN_PASSWORD)
-        alt Senha errada
-            API-->>A: 401
-        else Senha correta
-            API->>J: signSession() → HS256 JWT (7d)
-            J-->>API: token
-            API->>API: Set-Cookie: admin_session (HttpOnly, Secure, SameSite=Strict)
-            API-->>A: { ok: true }
-            A->>P: Redirect /admin/links
+    rect rgb(255, 252, 235)
+        Note over A,J: 2/3 — Rate Limit + Senha
+        A->>API: POST { password }
+        API->>RL: rateLimit(5/min por IP)
+        alt Rate limit excedido
+            API-->>A: 429 Too Many Requests
+            Note over A: Fim
+        else OK
+            API->>API: timingSafeEqual(password)
+            alt Senha inválida
+                API-->>A: 401 Unauthorized
+                Note over A: Fim
+            end
         end
+    end
+
+    rect rgb(235, 250, 235)
+        Note over A,J: 3/3 — Geração do token
+        API->>J: signSession() → HS256 (7d)
+        J-->>API: token
+        API->>API: Set-Cookie<br/>HttpOnly · Secure · SameSite=Strict
+        API-->>A: { ok: true }
+        A->>P: Redirect → /admin/links
     end
 ```
 
@@ -84,42 +109,55 @@ sequenceDiagram
 ## 3. Admin — CRUD de Links
 
 ```mermaid
+%%{init: {'sequence': {'actorMargin': 50, 'boxMargin': 18}}}%%
 sequenceDiagram
+    autonumber
     actor A as Admin
-    participant MW as Middleware
     participant API as /api/links
-    participant CSRF as validateOrigin
-    participant V as Zod Validator
-    participant SSRF as validateDestination
+    participant G as Guards
     participant DB as PostgreSQL
-    participant C as Redis Cache
     participant AUD as Audit Log
 
-    Note over A,AUD: Criar Link
-    A->>API: POST { destinationUrl, title? }
-    API->>MW: requireAdminWithRateLimit
-    API->>CSRF: check Origin/Referer
-    API->>V: createLinkSchema.parse()
-    API->>SSRF: validateDestinationUrl()
-    alt URL inválida ou IP privado
-        API-->>A: 400/422
-    else Válido
-        API->>API: nanoid(7) p/ slug (ou slug custom)
-        API->>DB: INSERT INTO links
-        API->>AUD: INSERT INTO audit_log
-        API-->>A: 201 { link }
+    rect rgb(255, 252, 235)
+        Note over A,AUD: CREATE — POST /api/links
+        A->>API: POST { destinationUrl, title? }
+        API->>G: Auth + Rate Limit + CSRF + Zod + SSRF
+        alt Validação falhou
+            G-->>A: 400 / 422
+            Note over A: Fim
+        else Tudo OK
+            API->>API: nanoid(7) como slug
+            API->>DB: INSERT INTO links
+            API->>AUD: INSERT link.create
+            API-->>A: 201 { link }
+        end
     end
 
-    Note over A,AUD: Editar Link
-    A->>API: PATCH /api/links/:id
-    API->>MW: Auth + Rate Limit
-    API->>CSRF: Origin check
-    API->>V: updateLinkSchema.parse()
-    API->>SSRF: validateDestinationUrl() (se mudou)
-    API->>DB: UPDATE links SET ...
-    API->>C: invalidateSlug(slug) ← deleta cache
-    API->>AUD: INSERT audit_log (before/after)
-    API-->>A: 200 { link }
+    rect rgb(235, 245, 255)
+        Note over A,AUD: UPDATE — PATCH /api/links/:id
+        A->>API: PATCH /api/links/:id
+        API->>G: Auth + Rate Limit + CSRF + Zod + SSRF
+        alt Validação falhou
+            G-->>A: 400 / 422
+            Note over A: Fim
+        else Tudo OK
+            API->>DB: UPDATE links SET … WHERE id = ?
+            API->>AUD: INSERT link.update (before/after)
+            API-->>A: 200 { link }
+        end
+    end
+
+    rect rgb(255, 240, 240)
+        Note over A,AUD: DELETE — DELETE /api/links/:id
+        A->>API: DELETE /api/links/:id
+        API->>G: Auth + Rate Limit + CSRF
+        alt Autorizado
+            API->>DB: DELETE links WHERE id = ?
+            Note over DB: ON DELETE CASCADE<br/>remove clicks também
+            API->>AUD: INSERT link.delete
+            API-->>A: 204 No Content
+        end
+    end
 ```
 
 ---
@@ -127,39 +165,45 @@ sequenceDiagram
 ## 4. Analytics
 
 ```mermaid
+%%{init: {'sequence': {'actorMargin': 55, 'boxMargin': 20}}}%%
 sequenceDiagram
+    autonumber
     actor A as Admin
     participant SC as Server Component
     participant F as flushClickBuffer
-    participant Q as Query Functions
     participant R as Redis
     participant DB as PostgreSQL
 
-    A->>SC: GET /admin/analytics
-    SC->>F: flushClickBuffer() — sincroniza clicks pendentes
-    F->>R: LRANGE clicks:buffer
-    F->>DB: INSERT INTO clicks (batch)
-    F->>R: DEL clicks:buffer
+    rect rgb(255, 252, 235)
+        Note over A,DB: 1/3 — Flush: Redis → PostgreSQL
+        A->>SC: GET /admin/analytics
+        SC->>F: flushClickBuffer()
+        F->>R: LRANGE clicks:buffer
+        R-->>F: [click, click, …]
+        F->>DB: INSERT batch
+        F->>R: DEL clicks:buffer
+        Note over F: Erro é silencioso<br/>não bloqueia o resto
+    end
 
-    SC->>Q: getAnalyticsSummary()
-    Q->>DB: SELECT COUNT(*), modo, pico
-    DB-->>Q: summary
-    Q-->>SC: { totalClicks, peakDay, peakDayClicks }
+    rect rgb(235, 250, 235)
+        Note over A,DB: 2/3 — Queries de Analytics (SSR)
+        SC->>SC: getAnalyticsSummary()
+        SC->>SC: getClicksOverTime(from, to)
+        SC->>SC: getTopLinks()
+        SC->>SC: getTopReferrers()
+        SC->>DB: 4 queries paralelas
+        DB-->>SC: summary, clicks, top, referrers
+        Note over SC: SSR com dados iniciais
+        SC-->>A: Página renderizada com gráficos
+    end
 
-    SC->>Q: getClicksOverTime(from, to)
-    Q->>DB: SELECT DATE(clicked_at), COUNT(*) GROUP BY
-    DB-->>Q: clicks por dia
-    Q-->>SC: [{ date, clicks }]
-
-    Note over SC: SSR com dados iniciais
-
-    SC-->>A: Página renderizada com dados
-
-    alt Mudou filtro de data
-        A->>API: GET /api/analytics/clicks-over-time?from=X&to=Y
+    rect rgb(235, 245, 255)
+        Note over A,DB: 3/3 — Mudança de filtro (client-side)
+        A->>A: Seleciona nova data
+        A->>API: GET /api/analytics/…?from=X&to=Y
         API->>F: flushClickBuffer()
         API->>DB: query com filtro
-        DB-->>API: filtered data
+        DB-->>API: dados filtrados
         API-->>A: JSON → recharts atualiza
     end
 ```
@@ -174,17 +218,23 @@ sequenceDiagram
 ## 5. Tracking de Clique (detalhado)
 
 ```mermaid
-flowchart LR
+%%{init: {'flowchart': {'nodeSpacing': 60, 'rankSpacing': 90}}}%%
+flowchart TB
     A["/\\[slug\\]/page.tsx<br/>307 Redirect"] --> B["after() callback"]
     B --> C["trackClick(linkId, req)"]
+
     C --> D{"slug resolvido<br/>com sucesso?"}
-    D -->|Sim| E["Extrair dados:<br/>referrer, user-agent, ip"]
+
     D -->|Não| F["Retorna<br/>sem fazer nada"]
-    E --> G["Gerar<br/>nanoid"]
-    E --> H["Gerar<br/>uaHash: SHA-256"]
-    G --> I["Pipeline Redis:<br/>LPUSH + LTRIM"]
+    D -->|Sim| E["Extrair dados:<br/>referrer · user-agent · IP"]
+
+    E --> G["Gerar nanoid"]
+    E --> H["Gerar uaHash<br/>(SHA-256 do UA)"]
+
+    G --> I["Pipeline Redis<br/>LPUSH + LTRIM"]
     H --> I
-    I --> J["Redis list<br/>clicks:buffer<br/>max 5000"]
+
+    I --> J["Redis clicks:buffer<br/>(máx 5.000)"]
 ```
 
 O flush (escrita no PG) é explicado em [Processos em Background](processos-background.md).

@@ -1,8 +1,8 @@
-import "server-only";
 import { and, asc, count, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { flushClickBuffer } from "@/lib/analytics/flush-clicks";
 import { db } from "@/lib/db";
 import { clicks, links } from "@/lib/db/schema";
-import { flushClickBuffer } from "@/lib/analytics/flush-clicks";
+import "server-only";
 
 export async function getAnalyticsSummary(
   from: Date,
