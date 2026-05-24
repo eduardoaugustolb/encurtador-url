@@ -152,20 +152,10 @@ sequenceDiagram
     autonumber
     actor A as Admin
     participant SC as Server Component
-    participant F as flushClickBuffer
-    participant R as Redis
     participant DB as PostgreSQL
 
-    Note over A,DB: ─── 1/3 — Flush: Redis → PostgreSQL ───
+    Note over A,DB: ─── 1/2 — Queries de Analytics (SSR) ───
     A->>SC: GET /admin/analytics
-    SC->>F: flushClickBuffer()
-    F->>R: LRANGE clicks:buffer
-    R-->>F: [click, click, …]
-    F->>DB: INSERT batch
-    F->>R: DEL clicks:buffer
-    Note over F: Erro é silencioso<br/>não bloqueia o resto
-
-    Note over A,DB: ─── 2/3 — Queries de Analytics (SSR) ───
     SC->>SC: getAnalyticsSummary()
     SC->>SC: getClicksOverTime(from, to)
     SC->>SC: getTopLinks()
@@ -175,17 +165,16 @@ sequenceDiagram
     Note over SC: SSR com dados iniciais
     SC-->>A: Página renderizada com gráficos
 
-    Note over A,DB: ─── 3/3 — Mudança de filtro (client-side) ───
+    Note over A,DB: ─── 2/2 — Mudança de filtro (client-side) ───
     A->>A: Seleciona nova data
     A->>API: GET /api/analytics/…?from=X&to=Y
-    API->>F: flushClickBuffer()
     API->>DB: query com filtro
     DB-->>API: dados filtrados
     API-->>A: JSON → recharts atualiza
 ```
 
 ### Pontos-chave:
-- **flushClickBuffer()** é chamado antes de toda query de analytics
+- Clicks são consultados **diretamente do PostgreSQL** — sem buffer/flush
 - SSR envia dados iniciais; mudanças de filtro disparam fetch no client
 - Validação de data: máximo 365 dias de janela
 
@@ -199,21 +188,18 @@ flowchart TB
     A["/\\[slug\\]/page.tsx<br/>307 Redirect"] --> B["after() callback"]
     B --> C["trackClick(linkId, req)"]
 
-    C --> D{"slug resolvido<br/>com sucesso?"}
+    C --> D["Extrair dados:<br/>referrer · user-agent · IP"]
 
-    D -->|Não| F["Retorna<br/>sem fazer nada"]
-    D -->|Sim| E["Extrair dados:<br/>referrer · user-agent · IP"]
+    D --> E["Gerar nanoid"]
+    D --> F["Gerar uaHash<br/>(SHA-256 do UA)"]
 
-    E --> G["Gerar nanoid"]
-    E --> H["Gerar uaHash<br/>(SHA-256 do UA)"]
+    E --> G["db.insert(clicks)<br/>INSERT direto no PG"]
+    F --> G
 
-    G --> I["Pipeline Redis<br/>LPUSH + LTRIM"]
-    H --> I
-
-    I --> J["Redis clicks:buffer<br/>(máx 5.000)"]
+    G --> H["PostgreSQL<br/>tabela clicks"]
 ```
 
-O flush (escrita no PG) é explicado em [Processos em Background](processos-background.md).
+O click é inserido **diretamente no PostgreSQL** dentro do `after()`, sem buffer intermediário.
 
 ---
 

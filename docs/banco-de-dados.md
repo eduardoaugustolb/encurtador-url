@@ -116,12 +116,14 @@ ORDER BY clicks DESC
 LIMIT 20;
 ```
 
-### Batch Insert Clicks (flush)
+### Insert de Click (tracking)
 
 ```sql
 INSERT INTO clicks (id, link_id, clicked_at, referrer, country, ua_hash)
-VALUES ($1, $2, $3, $4, $5, $6), ...;
+VALUES ($1, $2, $3, $4, $5, $6);
 ```
+
+Cada click é inserido individualmente dentro do callback `after()` do redirect — sem buffer Redis.
 
 ## Conexão
 

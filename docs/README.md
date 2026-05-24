@@ -10,7 +10,7 @@
 | [Arquitetura](arquitetura.md) | Stack, estrutura de pastas, diagramas |
 | [Fluxo de Dados](fluxo-de-dados.md) | Redirect, login, CRUD, analytics passo a passo |
 | [Banco de Dados](banco-de-dados.md) | Schema, índices, queries principais |
-| [Processos em Background](processos-background.md) | Tracking de cliques, buffer Redis, flush |
+| [Processos em Background](processos-background.md) | Tracking de cliques, cache, wipe cache |
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ bun run dev
 
 - **Next.js 16** — App Router, Server Components, React 19
 - **Drizzle ORM** — Type-safe SQL, schema declarativo
-- **Redis (ioredis)** — Cache de slugs, rate limiter, buffer de clicks
+- **Redis (ioredis)** — Cache de slugs, rate limiter
 - **PostgreSQL (Neon)** — Dados persistentes
 - **JWT (jose)** — Sessão admin stateless
 - **Tailwind v4** — Estilização

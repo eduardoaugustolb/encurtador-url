@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import type { DateRangePreset } from "@/components/analytics/date-range-filter";
@@ -82,6 +82,7 @@ export function AnalyticsDashboard({
   const [clicksData, setClicksData] = useState(initialClicksData);
   const [topLinksData, setTopLinksData] = useState(initialTopLinksData);
   const [referrersData, setReferrersData] = useState(initialReferrersData);
+  const [isPending, startTransition] = useTransition();
 
   const fetchRange = useCallback(async (from: Date, to: Date) => {
     const params = new URLSearchParams({
@@ -131,6 +132,18 @@ export function AnalyticsDashboard({
     fetchRange(from, to);
   }
 
+  async function handleWipeCache() {
+    startTransition(async () => {
+      await fetch("/api/cache/wipe", { method: "POST" });
+      const to = new Date();
+      const from = new Date();
+      if (preset === "30d") from.setDate(to.getDate() - 30);
+      else if (preset === "90d") from.setDate(to.getDate() - 90);
+      else from.setDate(to.getDate() - 7);
+      await fetchRange(from, to);
+    });
+  }
+
   function handleCustomRange(from: string, to: string) {
     setCustomFrom(from);
     setCustomTo(to);
@@ -145,9 +158,11 @@ export function AnalyticsDashboard({
     <div ref={container} className="space-y-6">
       <div ref={headerRef} className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-balance">Analytics</h1>
+        <div className="flex gap-2">
         <Button
           type="button"
           variant="outline"
+          disabled={isPending}
           onClick={() => {
             if (preset === "7d") {
               setSummary(initialSummary);
@@ -169,6 +184,15 @@ export function AnalyticsDashboard({
         >
           Refresh
         </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={isPending}
+          onClick={handleWipeCache}
+        >
+          {isPending ? "Limpando..." : "Limpar Cache"}
+        </Button>
+      </div>
       </div>
 
       <div ref={filterRef}>

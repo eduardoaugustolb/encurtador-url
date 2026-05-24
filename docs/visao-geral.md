@@ -43,19 +43,23 @@ A sessão admin usa **JWT (HS256)** armazenado em cookie HttpOnly/Secure/SameSit
 - **t3-env**: Valida variáveis de ambiente no startup. Se `DATABASE_URL` estiver faltando, o app nem sobe.
 - **Zod schemas**: Toda input de API é validada contra schemas tipados, com mensagens de erro descritivas.
 
-### 6. SSRF Protection
+### 6. Wipe Cache no Dashboard
+
+O dashboard de analytics tem um botão **"Limpar Cache"** que invalida todos os slugs cacheados no Redis. Como o cache depende do PostgreSQL (e não o contrário), limpar o cache nunca afeta os dados — o Redis é repopulado na próxima requisição via cache-aside.
+
+### 7. SSRF Protection
 
 URLs de destino passam por `validateDestinationUrl()`, que faz parse do hostname e verifica se o IP resolve para range privado (10.x, 172.16-31.x, 192.168.x, 127.x, etc.). Bloqueia tentativas de usar o encurtador para atingir serviços internos.
 
-### 7. Buffer de Cliques (Fire-and-Forget)
+### 7. Tracking de Cliques Direto no PostgreSQL
 
-Clicks de redirect não são inseridos diretamente no PostgreSQL para não bloquear o usuário. Em vez disso:
+Clicks são inseridos diretamente no PostgreSQL via `after()` callback, sem buffer intermediário:
 
 ```
-Redirect → after() → LPUSH Redis list → (eventualmente) flushClickBuffer() → INSERT batch
+Redirect → after() → trackClick() → INSERT INTO clicks
 ```
 
-O flush acontece sob demanda (quando analytics é consultado). Isso é um **trade-off**: dados podem ficar inconsistentes por alguns segundos, mas o redirect é sempre rápido.
+O `after()` garante que o redirect (307) seja enviado ao cliente antes da inserção do click. O Redis é usado apenas como **cache de leitura** (slugs, rate limit), nunca como buffer de escrita. Dados no PostgreSQL são a fonte da verdade; o cache pode ser limpo sem perda de dados.
 
 ### 8. Cursor-Based Pagination
 
