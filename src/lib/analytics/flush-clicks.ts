@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { clicks } from "@/lib/db/schema";
 
 const BUFFER_KEY = "clicks:buffer";
+const LOCK_KEY = "clicks:flush:lock";
+const LOCK_TTL_MS = 30_000;
 
 interface BufferedClick {
   linkId: string;
@@ -14,8 +16,21 @@ interface BufferedClick {
   uaHash: string | null;
 }
 
+async function acquireLock(): Promise<boolean> {
+  const ok = await redis.set(LOCK_KEY, "1", "PX", LOCK_TTL_MS, "NX");
+  return ok === "OK";
+}
+
+async function releaseLock(): Promise<void> {
+  await redis.del(LOCK_KEY).catch(() => {});
+}
+
 export async function flushClickBuffer(): Promise<void> {
+  let acquired = false;
   try {
+    acquired = await acquireLock();
+    if (!acquired) return;
+
     const raw = await redis.lrange(BUFFER_KEY, 0, -1);
     if (raw.length === 0) return;
 
@@ -35,5 +50,7 @@ export async function flushClickBuffer(): Promise<void> {
     await redis.ltrim(BUFFER_KEY, raw.length, -1);
   } catch {
     // flush errors must never break analytics queries
+  } finally {
+    if (acquired) await releaseLock();
   }
 }
