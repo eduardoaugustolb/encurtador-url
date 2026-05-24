@@ -116,17 +116,10 @@ export function AnalyticsDashboard({
   function handlePresetChange(p: DateRangePreset) {
     setPreset(p);
 
-    if (p === "7d") {
-      setSummary(initialSummary);
-      setClicksData(initialClicksData);
-      setTopLinksData(initialTopLinksData);
-      setReferrersData(initialReferrersData);
-      return;
-    }
-
     const to = new Date();
     const from = new Date();
-    if (p === "30d") from.setDate(to.getDate() - 30);
+    if (p === "7d") from.setDate(to.getDate() - 7);
+    else if (p === "30d") from.setDate(to.getDate() - 30);
     else if (p === "90d") from.setDate(to.getDate() - 90);
 
     fetchRange(from, to);
@@ -164,13 +157,6 @@ export function AnalyticsDashboard({
           variant="outline"
           disabled={isPending}
           onClick={() => {
-            if (preset === "7d") {
-              setSummary(initialSummary);
-              setClicksData(initialClicksData);
-              setTopLinksData(initialTopLinksData);
-              setReferrersData(initialReferrersData);
-              return;
-            }
             const to = new Date();
             const from = new Date();
             if (preset === "30d") from.setDate(to.getDate() - 30);

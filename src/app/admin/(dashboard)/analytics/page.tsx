@@ -7,6 +7,8 @@ import {
 } from "@/lib/db/queries/analytics";
 import { AnalyticsDashboard } from "./analytics-dashboard";
 
+export const dynamic = "force-dynamic";
+
 export default async function AnalyticsPage() {
   const to = new Date();
   const from = new Date();
