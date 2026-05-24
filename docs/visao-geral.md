@@ -8,7 +8,7 @@ Bit Link permite criar URLs curtas (ex: `encurta.dev/abc1234`) que redirecionam 
 
 ### 1. App Router com Server Components
 
-Next.js 16 com App Router. A página de redirect (`/[slug]`) é um **Server Component** (`force-dynamic`) que executa lógica no servidor e nunca envia JS ao cliente. O painel admin mescla Server Components (dados iniciais SSR) e Client Components (interatividade).
+Next.js 16 com App Router. A página de redirect (`/[slug]`) é um **Route Handler** (`force-dynamic`) que executa lógica no servidor e nunca envia JS ao cliente. O painel admin mescla Server Components (dados iniciais SSR) e Client Components (interatividade).
 
 ### 2. Cache-Aside com Redis
 
@@ -20,11 +20,11 @@ O padrão **cache-aside** é usado para resolver slugs:
 3. Se não existir (cache miss) → busca no PostgreSQL → popula cache
 ```
 
-Isso evita que todo redirect bata no banco PostgreSQL, reduzindo latência e custo (Neon cobra por uso).
+Isso evita que todo redirect bata no banco PostgreSQL, reduzindo latência e custo.
 
 ### 3. Sliding Window Rate Limiting via Lua
 
-Dois rate limiters implementados com **Redis + script Lua**:
+Três rate limiters implementados com **Redis + script Lua**:
 
 | Endpoint | Limite | Janela |
 |---|---|---|
@@ -32,7 +32,7 @@ Dois rate limiters implementados com **Redis + script Lua**:
 | Demais APIs admin | 60 req | 1 min |
 | `GET /[slug]` (redirect) | 100 req | 1 min |
 
-O script Lua é **atômico**: remove entradas expiradas, conta as restantes, adiciona a atual, tudo numa operação só. Isso evita race conditions.
+O script Lua é **atômico**: usa sorted sets (ZREMRANGEBYSCORE, ZADD) para sliding window precisa.
 
 ### 4. Stateless Auth com JWT
 
@@ -51,31 +51,23 @@ O dashboard de analytics tem um botão **"Limpar Cache"** que invalida todos os 
 
 URLs de destino passam por `validateDestinationUrl()`, que faz parse do hostname e verifica se o IP resolve para range privado (10.x, 172.16-31.x, 192.168.x, 127.x, etc.). Bloqueia tentativas de usar o encurtador para atingir serviços internos.
 
-### 7. Buffer de Cliques com Flush Confiável
+### 8. Buffer de Cliques com Flush Confiável
 
 Clicks de redirect são inseridos primeiro no Redis (`LPUSH` + `LTRIM`, O(1)) para não bloquear o redirect. Um flush confiável persiste os dados no PostgreSQL:
 
 ```
 Redirect → after() → LPUSH Redis → LTRIM (cap 5000)
-                                         ↓
+                                          ↓
 Analytics consultado → flushClickBuffer() → LRANGE → INSERT batch → LTRIM start=N
 ```
 
-O uso de `LTRIM` em vez de `DEL` garante que dados já persistidos não sejam re-inseridos mesmo em caso de falha parcial.
+O uso de **lock distribuído** (SET NX) previne duplicação quando 4 queries de analytics rodam em paralelo. O `LTRIM` em vez de `DEL` garante que dados já persistidos não sejam re-inseridos mesmo em caso de falha parcial.
 
-### 8. Cache de Slugs (Cache-Aside com Redis)
+### 9. Cache de Slugs (Cache-Aside com Redis)
 
-O cache de slugs segue o padrão **cache-aside**: o Redis é populado a partir do PostgreSQL e pode ser limpo sem perda de dados:
+O cache de slugs segue o padrão **cache-aside**: o Redis é populado a partir do PostgreSQL e pode ser limpo sem perda de dados. O cache é invalidado automaticamente ao criar, atualizar ou deletar links (`invalidateSlug()`). O botão "Limpar Cache" no dashboard permite limpeza manual.
 
-```
-1. Busca slug no Redis
-2. Se existir (cache hit) → usa (24h TTL)
-3. Se não existir (cache miss) → busca no PG → popula cache
-```
-
-O cache é invalidado automaticamente ao criar, atualizar ou deletar links (`invalidateSlug()`). O botão "Limpar Cache" no dashboard permite limpeza manual.
-
-### 8. Cursor-Based Pagination
+### 10. Cursor-Based Pagination
 
 A listagem de links usa **cursor pagination** em vez de `OFFSET`:
 
@@ -83,11 +75,11 @@ A listagem de links usa **cursor pagination** em vez de `OFFSET`:
 - Usa `WHERE (createdAt < cursor.createdAt OR (createdAt = cursor.createdAt AND id < cursor.id))`
 - Mais performático que `OFFSET` para tabelas grandes, consistente mesmo com inserts
 
-### 9. Infinite Scroll no Frontend
+### 11. Infinite Scroll no Frontend
 
 A página de links admin usa **React Query** (`useInfiniteLinks`) com `IntersectionObserver` para carregar mais dados conforme o usuário rola a página — sem botão "carregar mais".
 
-### 10. SEO & Metadados
+### 12. SEO & Metadados
 
 Todas as páginas possuem metadados únicos (title, description, Open Graph, Twitter Card) via `metadata` export do Next.js App Router:
 
@@ -103,16 +95,20 @@ Recursos de SEO implementados:
 - **`robots.txt`**: Permite `/`, bloqueia `/admin/`
 - **`sitemap.xml`**: Gerado dinamicamente via `sitemap.ts`
 - **`manifest.webmanifest`**: PWA manifest com ícones e tema escuro
-- **Ícones**: Logo SVG como `icon.svg`, `icon.tsx` (PNG 32x32), `apple-icon.tsx` (180x180)
+- **Ícones**: Logo SVG como `icon.tsx`, `apple-icon.tsx` (180x180)
 - **Open Graph + Twitter Image**: Gerados via `ImageResponse` com logo e gradiente escuro
 - **JSON-LD**: Structured data `WebSite` no `<head>` do root layout
 - **`theme-color`**: `#09090b` via `viewport` export
 - **`lang="pt"`**: HTML lang corrigido para português
 - **Home page**: Conteúdo real substituindo boilerplate Create Next App
 
-### 11. OpenTelemetry Tracing
+### 13. OpenTelemetry Tracing
 
-Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada com spans OTel via `traceStep()`. Em produção (Vercel), os traces são exportados automaticamente.
+Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada com spans OTel via `traceStep()`. Em produção (Vercel), os traces são exportados automaticamente via `@vercel/otel`.
+
+### 14. Audit Logging
+
+Toda operação de mutação (create/update/delete link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
 
 ---
 

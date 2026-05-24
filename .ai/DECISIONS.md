@@ -2,23 +2,21 @@
 
 ## ADR-001 — Edge vs Node.js for slug redirect
 
-**Decision:** Use `middleware.ts` (Edge) for slug resolution and redirect.
+**Decision:** Use `src/app/[slug]/route.ts` (Node.js Route Handler) for slug resolution and redirect.
 
-**Context:** Next.js 16 has two interceptors: `middleware.ts` (Edge) and `proxy.ts` (Node.js). The redirect path is the most latency-sensitive operation in the app.
+**Context:** Next.js 16 has two interceptors: `middleware.ts` (Edge) and `proxy.ts` (Node.js). The redirect path is the most latency-sensitive operation. After evaluation, the Node.js route handler was chosen because it has direct access to `ioredis` (Redis) and the full Node.js API without edge compatibility constraints. The added latency (~1-2ms vs Edge) is negligible.
 
-**Consequence:** `ioredis` does not work on the Edge Runtime. If Redis at Square Cloud is not accessible via a TCP-compatible Edge client, the fallback is to move slug resolution into `proxy.ts` and accept ~1–2ms additional latency. Document the final choice here after testing connectivity.
-
-**Status:** Pending validation against Square Cloud Redis connectivity from Vercel Edge.
+**Status:** Implemented. No middleware.ts exists in this project.
 
 ---
 
 ## ADR-002 — No BullMQ / no queue
 
-**Decision:** Use `waitUntil` for fire-and-forget analytics tracking instead of a job queue.
+**Decision:** Use `after()` for fire-and-forget analytics tracking instead of a job queue. Clicks are buffered in Redis (LPUSH + LTRIM) and batch-flushed to Postgres on analytics queries.
 
-**Context:** BullMQ adds a separate worker process, more infra surface, and complexity. A single `INSERT` into Postgres is not a workload that needs a queue — it takes <5ms and needs no retry semantics beyond what Postgres already provides.
+**Context:** BullMQ adds a separate worker process, more infra surface, and complexity. A single pipeline write to Redis takes <1ms.
 
-**Consequence:** If the Vercel function is killed before `waitUntil` completes, that click is lost. This is acceptable for a personal analytics tool.
+**Consequence:** If the Vercel function is killed before `after()` completes, that click is lost. This is acceptable for a personal analytics tool. For durability, the Redis buffer survives crashes until the next flush.
 
 ---
 
@@ -32,11 +30,16 @@
 
 ---
 
-## ADR-004 — `use cache` on aggregate queries only
+## ADR-004 — No `use cache` on analytics queries
 
-**Decision:** Only analytics aggregate queries and individual link lookups use `"use cache"`. The redirect path uses Redis directly.
+**Decision:** Analytics queries do **not** use the `"use cache"` directive. Instead, each query calls `flushClickBuffer()` to persist buffered clicks, then queries Postgres directly.
 
-**Context:** The `use cache` directive is for RSC and Server Action results. The redirect in `middleware.ts` runs before React — it cannot use Next.js cache. Redis is the correct cache layer for the hot path.
+**Context:** The `use cache` directive introduces staleness that conflicts with the read-your-writes requirement — the admin expects recent clicks to appear immediately. Direct Postgres queries after flushing the Redis buffer provide consistency without cache invalidation complexity.
+
+**Redis handles two cache concerns:**
+- Slug cache (`slug:*`) — cache-aside, 24h TTL
+- Rate limiting — sorted sets with Lua
+- Click buffer — `clicks:buffer` (not a cache, a buffer)
 
 ---
 
@@ -44,6 +47,16 @@
 
 **Decision:** One hardcoded admin user via env var, no database user table.
 
-**Context:** This is a personal tool. Adding a users table, password hashing at registration, and RBAC would consume a significant portion of the 4-hour build budget with zero benefit for a single user.
+**Context:** This is a personal tool. Adding a users table, password hashing at registration, and RBAC would not benefit a single user.
 
 **Consequence:** Changing the admin password requires a redeployment.
+
+---
+
+## ADR-006 — Rate limiting on redirect path
+
+**Decision:** Rate limiting is applied to the slug redirect (100 req/min per IP), not just admin routes.
+
+**Context:** Protects against abuse of the redirect as a URL-based reflector. Rate limiting uses Redis sorted sets with an atomic Lua script.
+
+**Consequence:** Rate-limited requests receive a 404 (no indication of the reason).

@@ -8,13 +8,12 @@
 
 ## Critical Next.js 16 Conventions
 
-- `proxy.ts` = Node.js interceptor (auth, cookies, headers)
-- `middleware.ts` = Edge interceptor (redirect only — no cookies)
-- `"use cache"` directive = explicit opt-in caching on functions and components
-- Always pair `"use cache"` with `cacheLife(profile)` and `cacheTag(tag)`
+- `proxy.ts` = Node.js interceptor (auth only, `/admin/:path*`)
+- `[slug]/route.ts` = Node.js route handler for slug resolution + redirect
+- No `middleware.ts` in this project — redirect does not run on Edge
+- `"use cache"` directive — **not used** in this project (analytics queries flush a Redis buffer instead)
 - `params` in pages and route handlers are async — always `await params`
-- `revalidateTag(tag, 'max')` requires second arg
-- `updateTag(tag)` only inside Server Actions
+- `after()` from `next/server` for fire-and-forget background tasks (replaces `waitUntil`)
 
 ## Code Conventions
 
@@ -34,7 +33,7 @@
 
 - All Drizzle queries live in `src/lib/db/queries/` — not inline in route handlers
 - Every mutable query must have a `.where()` clause
-- Schema changes require: `drizzle-kit generate` + `drizzle-kit migrate`
+- Schema changes require: `bunx drizzle-kit generate` + `bunx drizzle-kit migrate`
 - Cascade deletes defined at schema level, not application level
 
 ## Pagination Rules
@@ -46,14 +45,23 @@
 
 ## Analytics Rules
 
-- `trackClick()` always via `waitUntil` — never awaited
-- Errors in `trackClick` are swallowed silently
+- `trackClick()` always via `after()` — never awaited
+- `trackClick()` writes to Redis pipeline (LPUSH + LTRIM), not directly to Postgres
+- `flushClickBuffer()` batch-inserts from Redis to Postgres before analytics queries
+- Errors in `trackClick` and `flushClickBuffer` are swallowed silently
 - Never store raw User-Agent — only `sha256hex(ua)`
 - Referrer: store full URL, display `new URL(referrer).hostname`
 
+## Auth Rules
+
+- Login rate-limited: 5 req/min per IP
+- Admin API rate-limited: 60 req/min per IP
+- POST/PATCH/DELETE on links require CSRF validation via `validateOrigin()`
+- Logout uses Server Action (`logoutAction`), not an API route
+
 ## Git Rules
 
-- Branch prefixes: `feature/` (human), `agent/` (AI)
-- All PRs target `dev`, never `main`
+- Branch prefixes: `feature/` (human), `fix/` (bug fixes)
+- All PRs target `main`
 - Commit messages: `type(scope): description` — e.g. `feat(links): add expiry date field`
 - No WIP commits on PRs — squash before requesting review

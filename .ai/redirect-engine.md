@@ -3,32 +3,30 @@
 ## Scope
 
 This skill covers everything related to the slug resolution and redirect path:
-- `src/middleware.ts` (Edge Runtime)
+- `src/app/[slug]/route.ts` (Node.js Route Handler)
 - `src/lib/redis/index.ts`
 - `src/lib/analytics/track.ts`
+- `src/lib/analytics/flush-clicks.ts`
 
 ## How the Redirect Works
+
+Redirect runs in `[slug]/route.ts` (Node.js), **not** in `middleware.ts`. There is no Edge middleware in this project.
 
 ```
 Incoming request: GET /abc123
         │
         ▼
-middleware.ts (Edge)
+[slug]/route.ts (Node.js Route Handler)
         │
-        ├─ redis.get('slug:abc123')
-        │         │
-        │    hit ──┤──► Response.redirect(destinationUrl, 307)
-        │          │    + waitUntil(trackClick(...))
-        │          │
-        │    miss ─┤──► db.query.links (Postgres)
-        │               │
-        │          not found ──► redirect /not-found
-        │               │
-        │          found ──► redis.setex('slug:abc123', ttl, json)
-        │                    + Response.redirect(307)
-        │                    + waitUntil(trackClick(...))
+        ├─ checkRateLimit (Lua sorted-set, 100 req/min)
+        ├─ resolveSlug (Redis → Postgres fallback)
+        │
+        ├─ rate limited or not found → notFound()
+        │
+        ├─ after() → trackClick() [fire-and-forget, Redis pipeline]
+        │
         ▼
-     307 to destination
+     307 redirect to destinationUrl
 ```
 
 ## Redis Helpers
@@ -39,13 +37,15 @@ import 'server-only'
 import Redis from 'ioredis'
 import { env } from '@/env'
 
-export const redis = new Redis(env.REDIS_URL)
+export const redis = new Redis(env.REDIS_URL, {
+  keepAlive: 30_000,
+  retryStrategy: (times) => Math.min(times * 100, 3_000),
+})
 
 export type CachedLink = {
   id: string
   destinationUrl: string
   isActive: boolean
-  expiresAt: string | null
 }
 
 export async function resolveSlug(slug: string): Promise<CachedLink | null> {
@@ -54,19 +54,11 @@ export async function resolveSlug(slug: string): Promise<CachedLink | null> {
 
   const link = await db.query.links.findFirst({
     where: eq(links.slug, slug),
-    columns: { id: true, destinationUrl: true, isActive: true, expiresAt: true },
+    columns: { id: true, destinationUrl: true, isActive: true },
   })
 
   if (!link) return null
-
-  const ttl = link.expiresAt
-    ? Math.floor((new Date(link.expiresAt).getTime() - Date.now()) / 1000)
-    : 86400
-
-  if (ttl > 0) {
-    await redis.setex(`slug:${slug}`, ttl, JSON.stringify(link))
-  }
-
+  await redis.setex(`slug:${slug}`, 86400, JSON.stringify(link))
   return link
 }
 
@@ -75,72 +67,93 @@ export async function invalidateSlug(slug: string) {
 }
 ```
 
-## trackClick
+## trackClick — Redis Pipeline (not direct DB insert)
 
 ```ts
 // src/lib/analytics/track.ts
 import 'server-only'
-import { nanoid } from 'nanoid'
-import { db } from '@/lib/db'
-import { clicks } from '@/lib/db/schema'
+import { createHash } from 'node:crypto'
+import { redis } from '@/lib/redis'
 
-interface TrackClickInput {
-  linkId: string
-  referrer: string | null
-  country: string | null
-  userAgent: string | null
-}
-
-async function sha256hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-}
+const BUFFER_KEY = 'clicks:buffer'
+const MAX_BUFFER = 5_000
 
 export async function trackClick(input: TrackClickInput): Promise<void> {
   try {
-    const uaHash = input.userAgent ? await sha256hex(input.userAgent) : null
+    const uaHash = input.userAgent
+      ? createHash('sha256').update(input.userAgent).digest('hex')
+      : null
 
-    await db.insert(clicks).values({
-      id:        nanoid(),
-      linkId:    input.linkId,
-      clickedAt: new Date(),
-      referrer:  input.referrer,
-      country:   input.country?.slice(0, 2) ?? null,
+    const entry = JSON.stringify({
+      linkId: input.linkId,
+      clickedAt: new Date().toISOString(),
+      referrer: input.referrer,
+      country: input.country?.slice(0, 2) ?? null,
       uaHash,
     })
+
+    await redis.pipeline()
+      .lpush(BUFFER_KEY, entry)
+      .ltrim(BUFFER_KEY, 0, MAX_BUFFER - 1)
+      .exec()
   } catch {
     // intentionally swallowed — tracking MUST NOT affect redirect
   }
 }
 ```
 
-## isExpired Helper
+## flushClickBuffer — Distributed Lock
 
 ```ts
-export function isExpired(link: CachedLink): boolean {
-  if (!link.expiresAt) return false
-  return new Date(link.expiresAt).getTime() < Date.now()
+// src/lib/analytics/flush-clicks.ts
+import { nanoid } from 'nanoid'
+
+const LOCK_KEY = 'clicks:flush:lock'
+const LOCK_TTL_MS = 30_000
+
+export async function flushClickBuffer(): Promise<void> {
+  if (!await acquireLock()) return
+
+  try {
+    const raw = await redis.lrange(BUFFER_KEY, 0, -1)
+    if (raw.length === 0) return
+
+    const records = raw.map(entry => {
+      const data = JSON.parse(entry) as BufferedClick
+      return { id: nanoid(), linkId: data.linkId, clickedAt: new Date(data.clickedAt), referrer: data.referrer, country: data.country, uaHash: data.uaHash }
+    })
+
+    await db.insert(clicks).values(records)
+    await redis.ltrim(BUFFER_KEY, raw.length, -1)  // remove only processed items
+  } catch {
+    // flush errors must never break analytics queries
+  } finally {
+    await releaseLock()
+  }
 }
 ```
 
-## Edge Constraints
+## Key Differences From Common Patterns
 
-`middleware.ts` runs on the Edge Runtime. This means:
-- No `fs`, no `path`, no Node.js built-ins
-- `ioredis` does NOT work on Edge — Redis must be accessed via HTTP (Upstash REST) or the middleware must call an internal API route
-- **Square Cloud Redis:** use `ioredis` only in Node.js contexts (route handlers, server actions, server components). For the Edge middleware, use a thin HTTP wrapper or switch to Upstash REST API.
+| Aspect | This project |
+|---|---|
+| Runtime | Node.js via `[slug]/route.ts` (not Edge middleware) |
+| Background task | `after()` from `next/server` (not `waitUntil`) |
+| Click storage | Redis pipeline (LPUSH + LTRIM), batch-flushed to PG |
+| Rate limiting | Yes — sorted-set Lua script, 100 req/min per IP |
+| `CachedLink.expiresAt` | Not stored — uses fixed 24h TTL |
+| Slug cache invalidation | `invalidateSlug()` on create/update/delete |
+| Full cache wipe | `POST /api/cache/wipe` — SCAN + DEL on `slug:*` |
 
-### Edge-compatible Redis option
+## Rate Limiting on Redirect
 
-If Redis is not accessible from Edge, move slug resolution to a Node.js route handler and have `middleware.ts` proxy to it. Alternatively, keep the full resolution in `proxy.ts` (Node.js) instead of `middleware.ts` — sacrificing ~1ms for simplicity.
-
-Preferred for Square Cloud:
+Rate limiting runs **before** slug resolution (parallel Promise.all):
 
 ```ts
-// src/middleware.ts — minimal Edge, delegates to proxy
-export { default } from './proxy-redirect'
-
-// src/proxy.ts — handles both auth AND redirect for non-admin routes
+const [rl, link] = await Promise.all([
+  checkRateLimit({ windowMs: 60_000, max: 100, key: rateLimitKey("slug-resolve", ip) }),
+  resolveSlug(slug),
+]);
 ```
 
-Document the decision in `docs/DECISIONS.md`.
+On rate limit exceed → `notFound()` (no hint to caller).

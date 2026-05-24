@@ -11,29 +11,29 @@ graph TB
 
     subgraph NextJS["⚡ Next.js 16 (App Router)"]
         direction TB
-        MW["Middleware proxy.ts"]
+        P["proxy.ts (Node.js)"]
+        RH["Route Handlers<br/>[slug].ts + API"]
         SC["Server Components"]
         CC["Client Components"]
-        API["API Routes"]
     end
 
     subgraph Services["☁️ Serviços"]
-        PG[("PostgreSQL (Neon)")]
+        PG[("PostgreSQL")]
         REDIS[("Redis")]
     end
 
-    Browser --> MW
+    Browser -->|"/slug"| RH
+    Browser -->|"/admin/**"| P
+    P -->|auth ok| SC
+    P -->|auth ok| RH
 
-    MW -->|rota pública| SC
-    MW -->|rota /api/*| API
+    RH -->|dados persistentes| PG
+    RH -->|cache + rate limit| REDIS
 
     SC -->|dados persistentes| PG
-    SC -->|cache + rate limit| REDIS
+    SC -->|analytics queries| REDIS
 
-    API -->|CRUD + queries| PG
-    API -->|cache + rate limit| REDIS
-
-    CC -->|fetch| API
+    CC -->|fetch| RH
 ```
 
 ## Estrutura de Pastas
@@ -42,27 +42,29 @@ graph TB
 src/
 ├── app/                    # App Router (páginas + API)
 │   ├── [slug]/
-│   │   └── route.ts        # Motor de redirect
+│   │   └── route.ts        # Motor de redirect (Node.js)
 │   ├── admin/
-│   │   ├── login/          # Página de login
-│   │   └── (dashboard)/    # Layout protegido
-│   │       ├── links/      # Gerenciamento de links
-│   │       └── analytics/  # Dashboard de analytics
+│   │   ├── layout.tsx      # QueryProvider
+│   │   ├── login/          # Página de login (GSAP)
+│   │   ├── (dashboard)/    # Layout protegido com nav
+│   │   │   ├── links/      # Gerenciamento de links
+│   │   │   └── analytics/  # Dashboard de analytics
+│   │   └── page.tsx        # redirect → /admin/links
 │   └── api/                # REST API
 │       ├── auth/login
 │       ├── links/
 │       ├── analytics/
-│       └── ...
+│       └── cache/wipe
 ├── components/             # UI components
-│   ├── ui/                 # shadcn/base-ui primitives
+│   ├── ui/                 # shadcn primitives
 │   ├── links/              # Link list, card, forms
 │   ├── analytics/
 │   └── charts/             # Recharts wrappers
 └── lib/                    # Core logic
     ├── db/                 # Drizzle schema + queries
-    ├── redis/              # Cache client + rate limiter
+    ├── redis/              # Cache client + rate limiter + buffer
     ├── analytics/          # Click tracking + flush
-    ├── auth/               # JWT, session, middleware
+    ├── auth/               # JWT, session, guards, actions
     ├── validators/         # Zod schemas + SSRF filter
     └── hooks/              # React hooks
 ```
@@ -75,33 +77,31 @@ sequenceDiagram
     autonumber
     participant U as Usuário
     participant N as Next.js
-    participant MW as Middleware
-    participant SC as Server Component
+    participant RH as Route Handler
     participant API as API Route
     participant R as Redis
     participant P as PostgreSQL
 
     Note over U,P: ─── Redirect Flow ───
     U->>N: GET /abc1234
-    N->>MW: middleware
-    MW-->>N: next() (admin only)
-    N->>API: [slug]/route (GET)
+    N->>RH: [slug]/route.ts
 
-    API->>R: resolveSlug("abc1234")
+    RH->>R: checkRateLimit (100/min)
+    RH->>R: resolveSlug("abc1234")
     alt Cache Hit
-        R-->>API: { destinationUrl }
+        R-->>RH: { destinationUrl }
     else Cache Miss
-        API->>P: SELECT links WHERE slug = ?
-        P-->>API: link data
-        API->>R: SET slug:… (TTL 24h)
+        RH->>P: SELECT links WHERE slug = ?
+        P-->>RH: link data
+        RH->>R: SET slug:… (TTL 24h)
     end
 
-    API-->>U: 307 Redirect
+    RH-->>U: 307 Redirect
+    Note over RH: after() → trackClick()<br/>(Redis pipeline LPUSH)
 
     Note over U,P: ─── Admin API Flow ───
     U->>N: GET /api/links
-    N->>MW: middleware (auth JWT)
-    MW->>API: requireAdminWithRateLimit
+    N->>API: requireAdminWithRateLimit
 
     API->>R: rate limit (Lua script)
     API->>P: paginateLinks(cursor)
@@ -115,11 +115,11 @@ sequenceDiagram
 
 | Componente | Arquivo | Papel |
 |---|---|---|
-| Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, aplica rate limit, redireciona |
-| Middleware | `src/proxy.ts` | Protege rotas `/admin/*`, verifica JWT |
-| Auth Guard | `src/lib/auth/require-admin.ts` | Verifica cookie JWT em APIs |
+| Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, rate limit, redireciona |
+| Auth Guard | `src/proxy.ts` | Protege rotas `/admin/*`, verifica JWT |
+| Auth Guard (API) | `src/lib/auth/require-admin-with-rate-limit.ts` | Verifica cookie JWT + rate limit em APIs |
 | Rate Limiter | `src/lib/redis/rate-limit.ts` | Lua script p/ sliding window |
-| Cache | `src/lib/redis/index.ts` | Cache-aside de slugs |
+| Slug Cache | `src/lib/redis/index.ts` | Cache-aside de slugs |
 | Queries | `src/lib/db/queries/` | SQL tipado via Drizzle |
 
 ### Client-Side (Admin)
@@ -128,8 +128,8 @@ sequenceDiagram
 |---|---|---|
 | QueryProvider | `src/components/query-provider.tsx` | React Query provider |
 | LinkList | `src/components/links/link-list.tsx` | Infinite scroll list |
-| AnalyticsDashboard | `src/components/analytics/` | Gráficos + filtros |
-| Login | `src/app/admin/login/page.tsx` | Formulário de login |
+| Login | `src/app/admin/login/page.tsx` | Formulário de login com GSAP |
+| DashboardLayout | `src/app/admin/(dashboard)/layout.tsx` | Nav + GSAP entrance animation |
 
 ---
 
