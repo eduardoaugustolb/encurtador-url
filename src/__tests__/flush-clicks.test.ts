@@ -2,21 +2,39 @@ import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { flushClickBuffer } from "@/lib/analytics/flush-clicks";
 
 beforeEach(() => {
+  globalThis.__mockRedis.set.mockClear();
+  globalThis.__mockRedis.del.mockClear();
   globalThis.__mockRedis.lrange.mockClear();
   globalThis.__mockRedis.ltrim.mockClear();
   globalThis.__mockDb.insert.mockClear();
 });
 
 describe("flushClickBuffer", () => {
-  test("does nothing when buffer is empty", async () => {
+  test("acquires lock, does nothing when buffer is empty, releases lock", async () => {
     globalThis.__mockRedis.lrange.mockImplementationOnce(
       async () => [],
     );
 
     await flushClickBuffer();
 
+    expect(globalThis.__mockRedis.set).toHaveBeenCalledWith(
+      "clicks:flush:lock", "1", "PX", 30000, "NX",
+    );
     expect(globalThis.__mockDb.insert).not.toHaveBeenCalled();
     expect(globalThis.__mockRedis.ltrim).not.toHaveBeenCalled();
+    expect(globalThis.__mockRedis.del).toHaveBeenCalledWith("clicks:flush:lock");
+  });
+
+  test("skips flush when lock is held by another caller", async () => {
+    globalThis.__mockRedis.set.mockImplementationOnce(
+      async () => null,
+    );
+
+    await flushClickBuffer();
+
+    expect(globalThis.__mockRedis.lrange).not.toHaveBeenCalled();
+    expect(globalThis.__mockDb.insert).not.toHaveBeenCalled();
+    expect(globalThis.__mockRedis.del).not.toHaveBeenCalled();
   });
 
   test("batch inserts buffered clicks then trims buffer", async () => {
@@ -82,11 +100,12 @@ describe("flushClickBuffer", () => {
     expect(records[0]).toHaveProperty("clickedAt");
   });
 
-  test("swallows errors silently", async () => {
+  test("swallows errors silently and releases lock", async () => {
     globalThis.__mockRedis.lrange.mockImplementationOnce(
       async () => { throw new Error("redis down"); },
     );
 
     await expect(flushClickBuffer()).resolves.toBeUndefined();
+    expect(globalThis.__mockRedis.del).toHaveBeenCalledWith("clicks:flush:lock");
   });
 });
