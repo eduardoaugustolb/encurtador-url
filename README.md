@@ -1,6 +1,6 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/eduardoaugustolb/encurtador-url/main/public/logo.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/eduardoaugustolb/encurtador-url/main/public/logo-white.svg">
     <img alt="Bit Link" src="https://raw.githubusercontent.com/eduardoaugustolb/encurtador-url/main/public/logo.svg" height="80">
   </picture>
   <h1>Bit Link</h1>

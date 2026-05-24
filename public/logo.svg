@@ -1,11 +1,5 @@
 <svg width="222" height="309" viewBox="0 0 222 309" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    .fill-theme { fill: #1a1a1a; }
-    @media (prefers-color-scheme: dark) {
-      .fill-theme { fill: #f0f0f0; }
-    }
-  </style>
-  <path class="fill-theme" d="M32.7989 273.612L35.3883 0H0V309H152.774V273.612H32.7989Z"/>
-  <path class="fill-theme" d="M67.324 100.986V135.511H188.162V273.612H221.824V100.986H67.324Z"/>
-  <path class="fill-theme" d="M83.7235 221.824V187.299H119.112V221.824H83.7235Z"/>
+  <path d="M32.7989 273.612L35.3883 0H0V309H152.774V273.612H32.7989Z" fill="#1a1a1a"/>
+  <path d="M67.324 100.986V135.511H188.162V273.612H221.824V100.986H67.324Z" fill="#1a1a1a"/>
+  <path d="M83.7235 221.824V187.299H119.112V221.824H83.7235Z" fill="#1a1a1a"/>
 </svg>
