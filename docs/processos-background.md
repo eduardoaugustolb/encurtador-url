@@ -1,6 +1,6 @@
 # Processos em Background
 
-O Bit Link **não tem** um sistema de filas dedicado (Bull, RabbitMQ, etc.). O processamento em background é feito de forma **assíncrona e sob demanda** usando Redis como buffer.
+O Bit Link **não tem** buffer Redis para clicks. Todo click é inserido **diretamente no PostgreSQL** através do callback `after()` do Next.js, que executa após o redirect ser enviado ao cliente.
 
 ## Pipeline de Tracking de Cliques
 
@@ -13,112 +13,82 @@ flowchart TB
         B -.-> C["after() callback"]
     end
 
-    subgraph Buffer["② Redis Buffer"]
+    subgraph Insert["② INSERT no PostgreSQL"]
         direction TB
-        C --> D["LPUSH clicks:buffer"]
-        D --> E["LTRIM 0 4999"]
-        E --> F["Redis List<br/>máx 5.000 eventos"]
+        C --> D["trackClick()"]
+        D --> E["Gerar nanoid + uaHash"]
+        E --> F["db.insert(clicks).values(...)"]
+        F --> G[("PostgreSQL<br/>tabela clicks")]
     end
-
-    subgraph Flush["③ Flush sob demanda"]
-        direction TB
-        G["Admin acessa analytics"] --> H["flushClickBuffer()"]
-        H --> I["LRANGE clicks:buffer"]
-        I --> J["INSERT batch no PG"]
-        J --> K["DEL clicks:buffer"]
-    end
-
-    subgraph Storage["④ Dados Persistentes"]
-        L[("PostgreSQL<br/>tabela clicks")]
-    end
-
-    F --> H
-    K --> L
 ```
 
-## Por que esse design?
+## Arquitetura Anterior (Redis Buffer) vs. Atual
 
-### Sem fila dedicada
-- **Prós**: Zero infra extra (só Redis, que já usamos), deploy simples
-- **Contras**: Dados de click podem ficar inconsistentes por minutos/horas se ninguém acessar analytics
-
-### Buffer no Redis
-- `LPUSH` + `LTRIM` é O(1) — impacto mínimo no redirect
-- Cap de 5.000 entradas evita estouro de memória
-- Se o Redis cair, clicks são perdidos (trade-off assumido)
-
-### Flush on Read
-- `flushClickBuffer()` roda antes de toda query de analytics
-- Se falhar (Redis offline, PG fora), o erro é silencioso — analytics retorna dados já persistidos
-- Em produção com alto tráfego, seria ideal um cron job (`cron job` no Vercel, `pg_cron`, etc.) chamando `flushClickBuffer()` a cada 30s
+| Característica | Antes (Redis Buffer) | Agora (INSERT direto) |
+|---|---|---|
+| Onde o click é escrito | Redis `clicks:buffer` | PostgreSQL `clicks` |
+| Quando é persistido | Só no próximo acesso a analytics | Imediatamente (via `after()`) |
+| Fonte da verdade | PostgreSQL (eventual) | PostgreSQL (imediata) |
+| Perda de dados se Redis cair | Sim, clicks no buffer perdidos | Não |
+| Stale data após truncar PG | Sim, Redis reinseria | Não |
+| Cache dependente de PG? | Não (PG dependia do flush) | Sim (cache → PG) |
 
 ## Código Principal
 
 ### trackClick (src/lib/analytics/track.ts)
 
 ```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 50, 'rankSpacing': 70}}}%%
+%%{init: {'flowchart': {'nodeSpacing': 50, 'rankSpacing': 80}}}%%
 flowchart TB
-    A["trackClick(linkId, Request)"] --> B{"slug<br/>resolvido?"}
+    A["trackClick(linkId, req)"] --> B["Extrair referrer<br/>do header"]
+    B --> C["Calcular uaHash<br/>(SHA-256 do UA)"]
 
-    B -->|Não| Z["return (silencioso)"]
+    C --> D["Gerar nanoid"]
+    C --> E["Montar payload"]
 
-    B -->|Sim| C["Extrair referrer<br/>do header"]
-    C --> D["Calcular uaHash<br/>(SHA-256 do UA)"]
+    D --> F
+    E --> F
 
-    D --> E1["Gerar nanoid"]
-    D --> E2["Montar payload JSON<br/>{ linkId, clickedAt,<br/>  referrer, uaHash }"]
-
-    E1 --> F
-    E2 --> F
-
-    F["Pipeline Redis<br/>LPUSH + LTRIM"]
-    F --> G["exec() fire-and-forget<br/>captura erro com .catch()"]
+    F["db.insert(clicks)<br/>.values({ id, linkId, clickedAt,<br/>  referrer, country, uaHash })"]
+    F --> G["catch silencioso<br/>para não quebrar redirect"]
 ```
 
 ```typescript
-// Simplificado
-const pipeline = redis.pipeline();
-pipeline.lpush(bufferKey, JSON.stringify(clickEvent));
-pipeline.ltrim(bufferKey, 0, MAX_BUFFER_SIZE - 1);
-pipeline.exec().catch(() => {});
+export async function trackClick(input: TrackClickInput): Promise<void> {
+  try {
+    const uaHash = input.userAgent ? sha256hex(input.userAgent) : null;
+
+    await db.insert(clicks).values({
+      id: nanoid(),
+      linkId: input.linkId,
+      clickedAt: new Date(),
+      referrer: input.referrer,
+      country: input.country?.slice(0, 2) ?? null,
+      uaHash,
+    });
+  } catch {
+    // intentionally swallowed — tracking MUST NOT affect redirect
+  }
+}
 ```
 
-### flushClickBuffer (src/lib/analytics/flush-clicks.ts)
+### Wipe Cache (src/lib/redis/cache.ts)
 
-```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 50, 'rankSpacing': 70}}}%%
-flowchart TB
-    A["flushClickBuffer()"] --> B["LRANGE clicks:buffer"]
+O cache de slugs no Redis pode ser limpo via dashboard (botão "Limpar Cache") ou chamando `POST /api/cache/wipe`. O Redis é repopulado automaticamente na próxima requisição via cache-aside.
 
-    B --> C{"Tem eventos<br/>no buffer?"}
-
-    C -->|Não| F["return<br/>nada a fazer"]
-
-    C -->|Sim| D["Parse JSON<br/>+ validar campos"]
-    D --> E["db.insert(clicks)<br/>.values(...)"]
-
-    E -->|Sucesso| G["DEL clicks:buffer"]
-    G --> H["console.log success"]
-
-    E -->|Erro| I["console.error<br/>(silencioso —<br/>dados ficam no Redis)"]
+```typescript
+export async function clearSlugCache(): Promise<number> {
+  // SCAN slug:* → DEL
+}
 ```
 
 ## E se...?
 
 | Cenário | O que acontece |
 |---|---|
-| Redis cai durante redirect | `trackClick` falha silenciosamente → click perdido, mas redirect funciona |
-| Redis cai durante flush | Erro logado, dados ficam no Redis até próxima tentativa |
-| PG cai durante flush | Erro logado, buffer Redis mantém dados |
-| Dois flushes simultâneos | Podem duplicar inserts (sem unique constraint no click id — **melhorar**: usar `ON CONFLICT DO NOTHING` ou lock) |
-| Buffer chega a 5000 | `LTRIM` mantém só os 5000 mais recentes — os mais antigos são descartados |
-
-## Próximos Passos (se precisar escalar)
-
-1. **Cron job**: Agendar `flushClickBuffer()` a cada 30s via Vercel Cron Jobs
-2. **Deduplicação**: Adicionar `ON CONFLICT DO NOTHING` no INSERT de clicks
-3. **Fila real**: Migrar para Redis Streams + consumidor dedicado
+| PG cai durante redirect | `trackClick` falha silenciosamente → click perdido, mas redirect funciona |
+| Redis cai durante redirect | Redirect funciona (slug é resolvido via PG direto, sem cache) |
+| Cache de slug expirado | Próximo redirect faz cache miss → busca no PG → repopula cache |
 
 ---
 
