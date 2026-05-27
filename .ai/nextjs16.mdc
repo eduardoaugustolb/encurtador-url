@@ -11,9 +11,14 @@ src/app/[slug]/route.ts  →  Node.js Runtime
                             ✅ slug resolution, Redis lookup, redirect
                             ✅ rate limiting via ioredis Lua script
                             ✅ fire-and-forget tracking via after()
+
+src/app/api/trpc/[trpc]/route.ts  →  Node.js Runtime
+                                     ✅ tRPC HTTP handler (all admin APIs)
+                                     ✅ adminProcedure middleware chain
+                                     ✅ Zod validation + CSRF
 ```
 
-There is **no `middleware.ts`** in this project. All interception happens in `proxy.ts` (auth) and `[slug]/route.ts` (redirect).
+There is **no `middleware.ts`** in this project. All interception happens in `proxy.ts` (auth), `[slug]/route.ts` (redirect), and the tRPC handler (admin API).
 
 ## `after()` — Fire-and-Forget Pattern
 
@@ -65,6 +70,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 }
 ```
 
+## tRPC HTTP Handler
+
+```ts
+// src/app/api/trpc/[trpc]/route.ts
+import { fetchRequestHandler } from '@trpc/next/server'
+
+const handler = (req: NextRequest) =>
+  fetchRequestHandler({
+    endpoint: '/api/trpc',
+    req,
+    router: appRouter,
+    createContext: () => createContext({ req, sessionToken, ip }),
+  })
+
+export { handler as GET, handler as POST }
+```
+
 ## Server Actions
 
 ```ts
@@ -81,7 +103,7 @@ export async function logoutAction() {
 
 Only add `"use client"` when the component:
 - Uses `useState`, `useEffect`, `useReducer`, or other client hooks
-- Uses TanStack Query hooks (`useInfiniteQuery`, `useQuery`, `useMutation`)
+- Uses tRPC hooks (`api.xxx.useQuery()`, `useMutation`)
 - Uses GSAP animations
 - Attaches browser event handlers directly
 - Reads `window`, `document`, or other browser globals

@@ -4,6 +4,7 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { api } from "@/lib/trpc/react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,16 @@ export default function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const loginMutation = api.auth.login.useMutation({
+    onSuccess: () => {
+      router.push("/admin/links");
+    },
+    onError: (err) => {
+      setError(err.message);
+      setLoading(false);
+    },
+  });
 
   const container = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLDivElement>(null);
@@ -29,22 +40,46 @@ export default function LoginPage() {
       tl.fromTo(
         logoRef.current,
         { opacity: 0, y: -12, filter: "blur(4px)" },
-        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.5, ease: "power2.out" },
+        {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
+          duration: 0.5,
+          ease: "power2.out",
+        },
       );
       tl.fromTo(
         titleRef.current,
         { opacity: 0, y: -12, filter: "blur(4px)" },
-        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.4, ease: "power2.out" },
+        {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
+          duration: 0.4,
+          ease: "power2.out",
+        },
       );
       tl.fromTo(
         subtitleRef.current,
         { opacity: 0, y: -12, filter: "blur(4px)" },
-        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.4, ease: "power2.out" },
+        {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
+          duration: 0.4,
+          ease: "power2.out",
+        },
       );
       tl.fromTo(
         formRef.current,
         { opacity: 0, y: 20, filter: "blur(4px)" },
-        { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.5, ease: "power2.out" },
+        {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
+          duration: 0.5,
+          ease: "power2.out",
+        },
       );
     },
     { scope: container },
@@ -52,24 +87,11 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    e.preventDefault();
     setLoading(true);
     setError(null);
 
     const password = new FormData(e.currentTarget).get("password") as string;
-
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-
-    if (res.ok) {
-      router.push("/admin/links");
-    } else {
-      setError("Invalid password");
-      setLoading(false);
-    }
+    loginMutation.mutate({ password });
   }
 
   return (

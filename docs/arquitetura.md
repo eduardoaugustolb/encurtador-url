@@ -12,7 +12,8 @@ graph TB
     subgraph NextJS["⚡ Next.js 16 (App Router)"]
         direction TB
         P["proxy.ts (Node.js)"]
-        RH["Route Handlers<br/>[slug].ts + API"]
+        RH["Route Handler<br/>[slug].ts"]
+        tRPC["tRPC HTTP Handler<br/>api/trpc/[trpc]/route.ts"]
         SC["Server Components"]
         CC["Client Components"]
     end
@@ -25,48 +26,56 @@ graph TB
     Browser -->|"/slug"| RH
     Browser -->|"/admin/**"| P
     P -->|auth ok| SC
-    P -->|auth ok| RH
+    P -->|"/admin/**"| P
+
+    SC -->|"createSSRCaller()"| tRPC
+    CC -->|"api.xxx.useMutation()"| tRPC
+
+    tRPC -->|adminProcedure + Drizzle| PG
+    tRPC -->|cache + rate limit| REDIS
 
     RH -->|dados persistentes| PG
     RH -->|cache + rate limit| REDIS
-
-    SC -->|dados persistentes| PG
-    SC -->|analytics queries| REDIS
-
-    CC -->|fetch| RH
 ```
 
 ## Estrutura de Pastas
 
 ```
 src/
-├── app/                    # App Router (páginas + API)
+├── app/                    # App Router (páginas + tRPC handler)
 │   ├── [slug]/
-│   │   └── route.ts        # Motor de redirect (Node.js)
+│   │   └── route.ts        # Motor de redirect (Node.js) — não migrado para tRPC
 │   ├── admin/
-│   │   ├── layout.tsx      # QueryProvider
-│   │   ├── login/          # Página de login (GSAP)
+│   │   ├── layout.tsx      # QueryProvider (TRPCProvider)
+│   │   ├── login/          # Página de login (GSAP, tRPC mutation)
 │   │   ├── (dashboard)/    # Layout protegido com nav
-│   │   │   ├── links/      # Gerenciamento de links
-│   │   │   └── analytics/  # Dashboard de analytics
+│   │   │   ├── links/      # SSR via tRPC server caller
+│   │   │   └── analytics/  # SSR via tRPC server caller
 │   │   └── page.tsx        # redirect → /admin/links
-│   └── api/                # REST API
-│       ├── auth/login
-│       ├── links/
-│       ├── analytics/
-│       └── cache/wipe
+│   └── api/trpc/[trpc]/
+│       └── route.ts        # Único HTTP handler tRPC
+├── server/                 # tRPC
+│   ├── trpc.ts             # Context, middleware, procedures builders
+│   └── routers/
+│       ├── _app.ts         # appRouter
+│       ├── auth.ts         # login mutation
+│       ├── links.ts        # CRUD
+│       ├── analytics.ts    # Queries
+│       └── cache.ts        # Wipe
 ├── components/             # UI components
 │   ├── ui/                 # shadcn primitives
-│   ├── links/              # Link list, card, forms
+│   ├── links/              # Link list, card, forms (tRPC hooks)
 │   ├── analytics/
 │   └── charts/             # Recharts wrappers
-└── lib/                    # Core logic
-    ├── db/                 # Drizzle schema + queries
-    ├── redis/              # Cache client + rate limiter + buffer
-    ├── analytics/          # Click tracking + flush
-    ├── auth/               # JWT, session, guards, actions
-    ├── validators/         # Zod schemas + SSRF filter
-    └── hooks/              # React hooks
+├── lib/
+│   ├── trpc/               # tRPC client + server caller
+│   ├── db/                 # Drizzle schema + queries
+│   ├── redis/              # Cache client + rate limiter + buffer
+│   ├── analytics/          # Click tracking + flush
+│   ├── auth/               # JWT, session, guards, actions
+│   ├── validators/         # Zod schemas + SSRF filter
+│   └── hooks/              # React hooks
+└── proxy.ts                # Auth guard (/admin/**)
 ```
 
 ## Ciclo de Vida de uma Requisição
@@ -78,7 +87,7 @@ sequenceDiagram
     participant U as Usuário
     participant N as Next.js
     participant RH as Route Handler
-    participant API as API Route
+    participant t as tRPC Handler
     participant R as Redis
     participant P as PostgreSQL
 
@@ -99,14 +108,19 @@ sequenceDiagram
     RH-->>U: 307 Redirect
     Note over RH: after() → trackClick()<br/>(Redis pipeline LPUSH)
 
-    Note over U,P: ─── Admin API Flow ───
-    U->>N: GET /api/links
-    N->>API: requireAdminWithRateLimit
+    Note over U,P: ─── Admin API Flow (tRPC) ───
+    U->>N: GET /admin/analytics (SSR)
+    N->>t: createSSRCaller()
+    t->>t: adminProcedure (auth + rate limit)
+    t->>P: getAnalyticsSummary()
+    P-->>t: summary data
+    t-->>U: Página renderizada
 
-    API->>R: rate limit (Lua script)
-    API->>P: paginateLinks(cursor)
-    P-->>API: { data, nextCursor }
-    API-->>U: JSON response
+    U->>t: Client: api.analytics.summary.useQuery()
+    t->>t: adminProcedure
+    t->>P: query filtrada
+    P-->>t: dados
+    t-->>U: JSON → recharts atualiza
 ```
 
 ## Componentes e suas Responsabilidades
@@ -117,7 +131,8 @@ sequenceDiagram
 |---|---|---|
 | Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, rate limit, redireciona |
 | Auth Guard | `src/proxy.ts` | Protege rotas `/admin/*`, verifica JWT |
-| Auth Guard (API) | `src/lib/auth/require-admin-with-rate-limit.ts` | Verifica cookie JWT + rate limit em APIs |
+| tRPC Handler | `src/app/api/trpc/[trpc]/route.ts` | HTTP handler único para todas as APIs |
+| tRPC Middleware | `src/server/trpc.ts` | `adminProcedure`, `adminMutationProcedure` |
 | Rate Limiter | `src/lib/redis/rate-limit.ts` | Lua script p/ sliding window |
 | Slug Cache | `src/lib/redis/index.ts` | Cache-aside de slugs |
 | Queries | `src/lib/db/queries/` | SQL tipado via Drizzle |
@@ -126,10 +141,12 @@ sequenceDiagram
 
 | Componente | Arquivo | Papel |
 |---|---|---|
-| QueryProvider | `src/components/query-provider.tsx` | React Query provider |
-| LinkList | `src/components/links/link-list.tsx` | Infinite scroll list |
-| Login | `src/app/admin/login/page.tsx` | Formulário de login com GSAP |
-| DashboardLayout | `src/app/admin/(dashboard)/layout.tsx` | Nav + GSAP entrance animation |
+| TRPCProvider | `src/lib/trpc/react.tsx` | tRPC + React Query provider |
+| QueryProvider | `src/components/query-provider.tsx` | Wrapper do TRPCProvider |
+| LinkList | `src/components/links/link-list.tsx` | Infinite scroll list via tRPC |
+| Login | `src/app/admin/login/page.tsx` | Formulário com `auth.login.useMutation()` |
+| AnalyticsDashboard | `src/app/admin/(dashboard)/analytics/analytics-dashboard.tsx` | Queries tRPC com filtro |
+| Charts | `src/components/charts/` | Recharts wrappers |
 
 ---
 

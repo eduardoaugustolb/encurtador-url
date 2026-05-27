@@ -6,7 +6,24 @@ Bit Link permite criar URLs curtas (ex: `encurta.dev/abc1234`) que redirecionam 
 
 ## Conceitos Aplicados
 
-### 1. App Router com Server Components
+### 1. tRPC — Type Safety Full-Stack
+
+Todas as APIs admin são expostas via **tRPC v11** com transformer superjson, substituindo os 9 route handlers REST anteriores. Um único HTTP handler em `api/trpc/[trpc]/route.ts` serve todos os procedimentos.
+
+**Benefícios:**
+- Tipos gerados automaticamente das definições de procedimento — zero `fetch()` manual
+- Zod schemas reutilizados como input das procedures
+- Middleware chain substitui `requireAdminWithRateLimit` repetido
+- CSRF automático em mutations via middleware
+- Server Components usam `createSSRCaller()` para SSR type-safe
+- Cliente usa hooks tipados: `api.links.list.useQuery()`, `api.auth.login.useMutation()`
+
+**O que não migrou:**
+- `[slug]/route.ts` (redirect HTTP 307) — não é uma API
+- `proxy.ts` (auth guard) — interceptor Node.js, não tRPC
+- `logoutAction` (Server Action) — não precisa de API
+
+### 2. App Router com Server Components
 
 Next.js 16 com App Router. A página de redirect (`/[slug]`) é um **Route Handler** (`force-dynamic`) que executa lógica no servidor e nunca envia JS ao cliente. O painel admin mescla Server Components (dados iniciais SSR) e Client Components (interatividade).
 

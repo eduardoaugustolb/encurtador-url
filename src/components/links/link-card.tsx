@@ -18,7 +18,7 @@ export function LinkCard({ link, onEdit, onDelete }: LinkCardProps) {
           /{link.slug} &rarr; {link.destinationUrl}
         </p>
         <p className="text-xs text-muted-foreground">
-          Created {new Date(link.createdAt).toLocaleDateString()}
+          Created {link.createdAt.toLocaleDateString()}
         </p>
       </div>
       <div className="flex items-center gap-2">

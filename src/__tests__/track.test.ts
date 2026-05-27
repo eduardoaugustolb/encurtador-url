@@ -91,12 +91,10 @@ describe("trackClick", () => {
 
   test("swallows errors silently", async () => {
     const badPipeline = createMockPipeline();
-    badPipeline.exec.mockImplementationOnce(
-      async () => { throw new Error("redis down"); },
-    );
-    globalThis.__mockRedis.pipeline.mockImplementationOnce(
-      () => badPipeline,
-    );
+    badPipeline.exec.mockImplementationOnce(async () => {
+      throw new Error("redis down");
+    });
+    globalThis.__mockRedis.pipeline.mockImplementationOnce(() => badPipeline);
 
     await expect(
       trackClick({

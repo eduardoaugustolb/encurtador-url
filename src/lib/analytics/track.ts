@@ -28,7 +28,11 @@ export async function trackClick(input: TrackClickInput): Promise<void> {
       uaHash,
     });
 
-    await redis.pipeline().lpush(BUFFER_KEY, entry).ltrim(BUFFER_KEY, 0, MAX_BUFFER - 1).exec();
+    await redis
+      .pipeline()
+      .lpush(BUFFER_KEY, entry)
+      .ltrim(BUFFER_KEY, 0, MAX_BUFFER - 1)
+      .exec();
   } catch {
     // intentionally swallowed — tracking MUST NOT affect redirect
   }

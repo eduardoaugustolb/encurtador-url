@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import type { InfiniteData } from "@tanstack/react-query";
+import { api } from "@/lib/trpc/react";
 import { useInfiniteLinks } from "@/lib/hooks/use-infinite-links";
 import { useIntersection } from "@/lib/hooks/use-intersection";
 import { CreateLinkForm } from "./create-link-form";
@@ -13,18 +13,17 @@ import type { Link } from "./types";
 
 gsap.registerPlugin(useGSAP);
 
-interface Props {
-  initialData?: InfiniteData<{
-    data: Link[];
-    nextCursor: string | null;
-  }>;
-}
+interface Props {}
 
-export function LinkList({ initialData }: Props) {
+export function LinkList({}: Props) {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
-    useInfiniteLinks(initialData);
+    useInfiniteLinks();
 
   const [editingLink, setEditingLink] = useState<Link | null>(null);
+
+  const deleteMutation = api.links.delete.useMutation({
+    onSuccess: () => refetch(),
+  });
 
   const container = useRef<HTMLDivElement>(null);
   const cardListRef = useRef<HTMLDivElement>(null);
@@ -65,10 +64,7 @@ export function LinkList({ initialData }: Props) {
             key={link.id}
             link={link}
             onEdit={setEditingLink}
-            onDelete={async (id) => {
-              await fetch(`/api/links/${id}`, { method: "DELETE" });
-              refetch();
-            }}
+            onDelete={(id) => deleteMutation.mutate({ id })}
           />
         ))}
       </div>

@@ -59,7 +59,7 @@ sequenceDiagram
     autonumber
     actor A as Admin
     participant P as Login Page
-    participant API as /api/auth/login
+    participant t as tRPC: auth.login
     participant RL as Rate Limiter
     participant J as JWT
 
@@ -67,90 +67,89 @@ sequenceDiagram
     A->>P: GET /admin/login
     P-->>A: Página com formulário (GSAP animation)
 
-    Note over A,J: ─── 2/3 — Rate Limit + Senha ───
-    A->>API: POST { password }
-    API->>RL: rateLimit(5/min por IP)
+    Note over A,J: ─── 2/3 — Rate Limit + Senha (tRPC mutation) ───
+    A->>P: Submit password
+    P->>t: api.auth.login.useMutation({ password })
+    t->>RL: rateLimit(5/min por IP)
     alt Rate limit excedido
-        API-->>A: 429 Too Many Requests
+        t-->>A: TRPCError TOO_MANY_REQUESTS
         Note over A: Fim
     else OK
-        API->>API: timingSafeEqual(password)
+        t->>t: timingSafeEqual(password)
         alt Senha inválida
-            API-->>A: 401 Unauthorized
+            t-->>A: TRPCError UNAUTHORIZED
             Note over A: Fim
         end
     end
 
     Note over A,J: ─── 3/3 — Geração do token ───
-    API->>J: signSession() → HS256 (7d)
-    J-->>API: token
-    API->>API: Set-Cookie<br/>HttpOnly · Secure · SameSite=Strict
-    API-->>A: { ok: true }
-    A->>P: Redirect → /admin/links
+    t->>J: signSession() → HS256 (7d)
+    J-->>t: token
+    t->>t: Set-Cookie via cookies() from next/headers
+    t-->>A: { ok: true }
+    A->>P: router.push("/admin/links")
 ```
 
 ### Pontos-chave:
 - **timingSafeEqual** — comparação em tempo constante contra timing attack
 - **5 req/min** — proteção contra brute force
 - **Cookie HttpOnly + SameSite=Strict** — não acessível via JS
+- Login usa `publicProcedure` com rate limit manual (diferente do middleware global)
 
 ---
 
-## 3. Admin — CRUD de Links
+## 3. Admin — CRUD de Links (via tRPC)
 
 ```mermaid
 %%{init: {'sequence': {'actorMargin': 50, 'boxMargin': 18}}}%%
 sequenceDiagram
     autonumber
     actor A as Admin
-    participant API as /api/links
-    participant G as Guards
+    participant t as tRPC: links.*
+    participant M as Middleware Chain
     participant DB as PostgreSQL
     participant AUD as Audit Log
     participant C as Redis Cache
 
-    Note over A,C: ─── CREATE — POST /api/links ───
-    A->>API: POST { destinationUrl, title? }
-    API->>G: requireAdminWithRateLimit + validateOrigin + Zod + SSRF
+    Note over A,C: ─── CREATE — links.create ───
+    A->>t: api.links.create.useMutation({ destinationUrl, title? })
+    t->>M: adminMutationProcedure<br/>(auth + rate limit + CSRF)
     alt Validação falhou
-        G-->>A: 400 / 403 / 422
+        M-->>A: TRPCError
         Note over A: Fim
     else Tudo OK
-        API->>API: nanoid(7) como slug
-        API->>DB: INSERT INTO links
-        API->>C: invalidateSlug() (limpa cache)
-        API->>AUD: INSERT audit_log
-        API-->>A: 201 { link }
+        t->>t: nanoid(7) como slug
+        t->>DB: INSERT INTO links
+        t->>C: invalidateSlug() (limpa cache)
+        t->>AUD: INSERT audit_log
+        t-->>A: { link }
     end
 
-    Note over A,C: ─── UPDATE — PATCH /api/links/:id ───
-    A->>API: PATCH /api/links/:id
-    API->>G: requireAdminWithRateLimit + validateOrigin + Zod + SSRF
-    alt Validação falhou
-        G-->>A: 400 / 403 / 422
-        Note over A: Fim
-    else Tudo OK
-        API->>DB: UPDATE links SET … WHERE id = ?
-        API->>C: invalidateSlug() (limpa cache)
-        API->>AUD: INSERT audit_log (before/after)
-        API-->>A: 200 { link }
-    end
-
-    Note over A,C: ─── DELETE — DELETE /api/links/:id ───
-    A->>API: DELETE /api/links/:id
-    API->>G: requireAdminWithRateLimit + validateOrigin
+    Note over A,C: ─── UPDATE — links.update ───
+    A->>t: api.links.update.useMutation({ id, ... })
+    t->>M: adminMutationProcedure
     alt Autorizado
-        API->>DB: DELETE links WHERE id = ?
+        t->>DB: UPDATE links SET … WHERE id = ?
+        t->>C: invalidateSlug()
+        t->>AUD: INSERT audit_log (before/after)
+        t-->>A: { link }
+    end
+
+    Note over A,C: ─── DELETE — links.delete ───
+    A->>t: api.links.delete.useMutation({ id })
+    t->>M: adminMutationProcedure
+    alt Autorizado
+        t->>DB: DELETE links WHERE id = ?
         Note over DB: ON DELETE CASCADE<br/>remove clicks também
-        API->>C: invalidateSlug()
-        API->>AUD: INSERT audit_log
-        API-->>A: 204 No Content
+        t->>C: invalidateSlug()
+        t->>AUD: INSERT audit_log
+        t-->>A: { ok: true }
     end
 ```
 
 ---
 
-## 4. Analytics
+## 4. Analytics (via tRPC)
 
 ```mermaid
 %%{init: {'sequence': {'actorMargin': 55, 'boxMargin': 20}}}%%
@@ -164,37 +163,36 @@ sequenceDiagram
 
     Note over A,DB: ─── 1/3 — Flush: Redis → PostgreSQL ───
     A->>SC: GET /admin/analytics
-    SC->>F: flushClickBuffer() (com lock distribuído)
+    SC->>SC: createSSRCaller()
+    SC->>F: caller.analytics.summary() → flushClickBuffer() (com lock distribuído)
     F->>R: LRANGE clicks:buffer
     R-->>F: [click, click, …]
     F->>DB: INSERT batch
     F->>R: LTRIM clicks:buffer N -1
     Note over F: LTRIM remove só os N<br/>processados, não o buffer todo
 
-    Note over A,DB: ─── 2/3 — Queries de Analytics (SSR) ───
-    SC->>SC: getAnalyticsSummary()
-    SC->>SC: getClicksOverTime(from, to)
-    SC->>SC: getTopLinks()
-    SC->>SC: getTopReferrers()
-    Note over SC: Cada query chama<br/>flushClickBuffer() primeiro
-    SC->>DB: 4 queries paralelas
-    DB-->>SC: summary, clicks, top, referrers
+    Note over A,DB: ─── 2/3 — Queries de Analytics via tRPC (SSR) ───
+    SC->>SC: 4 chamadas paralelas ao server caller
+    SC->>DB: getAnalyticsSummary, getClicksOverTime, getTopLinks, getTopReferrers
+    DB-->>SC: dados
     SC-->>A: Página renderizada com gráficos
 
-    Note over A,DB: ─── 3/3 — Mudança de filtro (client-side) ───
+    Note over A,DB: ─── 3/3 — Mudança de filtro (client-side via tRPC) ───
     A->>A: Seleciona nova data
-    A->>API: GET /api/analytics/…?from=X&to=Y
-    API->>API: flushClickBuffer() antes de cada query
-    API->>DB: query com filtro
-    DB-->>API: dados filtrados
-    API-->>A: JSON → recharts atualiza
+    A->>A: api.analytics.summary.useQuery()
+    A->>A: api.analytics.clicksOverTime.useQuery()
+    A->>A: api.analytics.topLinks.useQuery()
+    A->>A: api.analytics.topReferrers.useQuery()
+    Note over A: TanStack Query refetch com novo filtro
+    A->>DB: 4 queries com filtro
+    DB-->>A: dados filtrados → recharts atualiza
 ```
 
 ### Pontos-chave:
-- **flushClickBuffer()** é chamado antes de toda query de analytics (não usa `use cache`)
+- **flushClickBuffer()** é chamado antes de toda query de analytics (dentro das funções Drizzle)
 - **Lock distribuído** (SET NX PX 30000) previne duplicação entre 4 chamadas paralelas
 - **LTRIM** remove só os registros processados, nunca dados concorrentes
-- SSR envia dados iniciais; mudanças de filtro disparam fetch no client
+- SSR usa `createSSRCaller()` para dados iniciais (passados como props fallback); mudanças de filtro usam `useQuery` via tRPC (refetch automático)
 - Validação de data: máximo 365 dias de janela
 
 ---

@@ -15,9 +15,7 @@ describe("resolveSlug", () => {
       isActive: true,
     });
 
-    globalThis.__mockRedis.get.mockImplementationOnce(
-      async () => cached,
-    );
+    globalThis.__mockRedis.get.mockImplementationOnce(async () => cached);
 
     const result = await resolveSlug("github");
 
@@ -30,9 +28,7 @@ describe("resolveSlug", () => {
   });
 
   test("falls back to database and caches result", async () => {
-    globalThis.__mockRedis.get.mockImplementationOnce(
-      async () => null,
-    );
+    globalThis.__mockRedis.get.mockImplementationOnce(async () => null);
 
     const dbLink = {
       id: "link-2",
@@ -55,9 +51,7 @@ describe("resolveSlug", () => {
   });
 
   test("returns null when slug not found in Redis or database", async () => {
-    globalThis.__mockRedis.get.mockImplementationOnce(
-      async () => null,
-    );
+    globalThis.__mockRedis.get.mockImplementationOnce(async () => null);
     globalThis.__mockDb.query.links.findFirst.mockImplementationOnce(
       async () => null,
     );
@@ -69,9 +63,7 @@ describe("resolveSlug", () => {
   });
 
   test("returns link even when inactive (caller decides)", async () => {
-    globalThis.__mockRedis.get.mockImplementationOnce(
-      async () => null,
-    );
+    globalThis.__mockRedis.get.mockImplementationOnce(async () => null);
 
     const inactiveLink = {
       id: "link-3",

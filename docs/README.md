@@ -34,10 +34,12 @@ bun run dev
 ## Stack principal
 
 - **Next.js 16** — App Router, Server Components, React 19
+- **tRPC v11** — API type-safe (substitui Route Handlers)
 - **Drizzle ORM** — Type-safe SQL, schema declarativo
 - **Redis (ioredis)** — Cache de slugs, rate limiter, buffer de clicks
 - **PostgreSQL** — Dados persistentes
 - **JWT (jose)** — Sessão admin stateless
+- **TanStack Query v5** — Data fetching no cliente (via tRPC)
 - **Tailwind v4** — Estilização
 - **shadcn/ui** — Componentes headless
 - **Recharts** — Gráficos de analytics

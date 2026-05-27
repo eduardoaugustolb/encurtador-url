@@ -67,7 +67,10 @@ export async function GET(
     notFound();
   }
 
-  audit("after.register", { linkId: link.id, destination: link.destinationUrl });
+  audit("after.register", {
+    linkId: link.id,
+    destination: link.destinationUrl,
+  });
 
   after(async () => {
     audit("after.executed");

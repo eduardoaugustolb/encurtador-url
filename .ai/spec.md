@@ -45,20 +45,9 @@ src/
 │   │   │       └── page.tsx
 │   │   └── page.tsx               # → redirect to /admin/links
 │   ├── api/
-│   │   ├── links/
-│   │   │   ├── route.ts           # GET (list), POST (create)
-│   │   │   └── [id]/
-│   │   │       └── route.ts       # PATCH, DELETE
-│   │   ├── analytics/
-│   │   │   ├── summary/route.ts
-│   │   │   ├── clicks-over-time/route.ts
-│   │   │   ├── top-links/route.ts
-│   │   │   ├── top-referrers/route.ts
-│   │   │   └── export/route.ts
-│   │   ├── cache/
-│   │   │   └── wipe/route.ts      # Clear slug cache
-│   │   └── auth/
-│   │       └── login/route.ts
+│   │   └── trpc/
+│   │       └── [trpc]/
+│   │           └── route.ts       # Single tRPC HTTP handler (GET + POST)
 │   ├── not-found.tsx              # 404 page with ASCII art
 │   ├── layout.tsx                 # Root layout with fonts, theme, JSON-LD, analytics
 │   ├── page.tsx                   # Home page
@@ -86,6 +75,9 @@ src/
 │   ├── logo.tsx
 │   └── ascii-text.tsx
 ├── lib/
+│   ├── trpc/
+│   │   ├── react.tsx              # createTRPCReact + TRPCProvider client-side
+│   │   └── server.ts              # createSSRCaller for Server Components
 │   ├── db/
 │   │   ├── index.ts               # Drizzle client
 │   │   ├── schema.ts
@@ -102,8 +94,7 @@ src/
 │   │   └── flush-clicks.ts        # Distributed-lock flush from Redis → PG
 │   ├── auth/
 │   │   ├── session.ts             # JWT sign/verify + cookie helpers
-│   │   ├── require-admin.ts       # Cookie auth guard
-│   │   ├── require-admin-with-rate-limit.ts  # Auth + rate limit combined
+│   │   ├── require-admin.ts       # Cookie auth guard (used by proxy.ts only)
 │   │   ├── validate-origin.ts     # CSRF protection via Origin/Referer
 │   │   └── actions.ts             # logoutAction Server Action
 │   ├── validators/
@@ -117,7 +108,14 @@ src/
 │   ├── audit.ts                   # createAudit() — request-level structured logging
 │   ├── telemetry.ts               # OpenTelemetry traceStep wrapper
 │   └── utils.ts
-├── middleware.ts                   # NOT USED — no such file in this project
+├── server/
+│   ├── trpc.ts                    # tRPC context, middleware, procedure builders
+│   └── routers/
+│       ├── _app.ts                # appRouter + createCallerFactory
+│       ├── auth.ts                # login mutation
+│       ├── links.ts               # list, getById, create, update, delete
+│       ├── analytics.ts           # summary, clicksOverTime, topLinks, topReferrers, export
+│       └── cache.ts               # wipe mutation
 ├── proxy.ts                        # Node.js — admin auth guard (/admin/:path*)
 ├── env.ts                          # @t3-oss/env-nextjs
 └── instrumentation.ts              # Vercel OTel registration
@@ -230,34 +228,55 @@ export const config = { matcher: ["/admin/:path*"] };
 
 ---
 
-## API Routes
+## tRPC API
 
-All inputs validated with Zod. All routes return `application/json` unless noted.
+All `fetch()` calls replaced with tRPC procedures. Single HTTP handler at `POST /api/trpc` (batching via `httpBatchLink`). Inputs validated with Zod (schemas reused from `src/lib/validators/`). Superjson transformer for Date serialization.
 
-### Links
+### Routers
 
+| Router | Procedure | Type | Input | CSRF |
+|---|---|---|---|---|
+| `auth` | `.login` | mutation | `{ password }` | no |
+| `links` | `.list` | query | `{ cursor?, limit? }` | no |
+| `links` | `.getById` | query | `{ id }` | no |
+| `links` | `.create` | mutation | `createLinkSchema` | yes |
+| `links` | `.update` | mutation | `updateLinkSchema + { id }` | yes |
+| `links` | `.delete` | mutation | `{ id }` | yes |
+| `analytics` | `.summary` | query | `analyticsQuerySchema` | no |
+| `analytics` | `.clicksOverTime` | query | `analyticsQuerySchema` | no |
+| `analytics` | `.topLinks` | query | `analyticsQuerySchema + { limit? }` | no |
+| `analytics` | `.topReferrers` | query | `analyticsQuerySchema` | no |
+| `analytics` | `.export` | query | `analyticsQuerySchema` — returns JSON (migrated from CSV for LGPD) | no |
+| `cache` | `.wipe` | mutation | none | no |
+
+### Client Usage
+
+```ts
+// Query (TanStack Query)
+const { data } = api.links.list.useQuery({ cursor, limit })
+
+// Infinite query
+const { data, fetchNextPage } = api.links.list.useInfiniteQuery(
+  { limit: 20 },
+  { getNextPageParam: (last) => last.nextCursor ?? undefined },
+)
+
+// Mutation
+const createMutation = api.links.create.useMutation()
+createMutation.mutate({ destinationUrl, title })
+
+// SSR (Server Component)
+const caller = await createSSRCaller()
+const page = await caller.links.list({ limit: 20 })
 ```
-GET    /api/links?cursor=<cursor>&limit=20
-POST   /api/links                     # + CSRF (Origin validation)
-PATCH  /api/links/:id                 # + CSRF
-DELETE /api/links/:id  → 204          # + CSRF
-```
 
-### Analytics
+### Middleware Chain
 
-```
-GET /api/analytics/summary?from=&to=&linkId=
-GET /api/analytics/clicks-over-time?from=&to=&linkId=
-GET /api/analytics/top-links?from=&to=&limit=10
-GET /api/analytics/top-referrers?from=&to=&linkId=
-GET /api/analytics/export?from=&to=&linkId=    → text/csv
-```
-
-### Cache
-
-```
-POST /api/cache/wipe                           → { ok, deletedKeys }
-```
+| Procedure Builder | Middleware |
+|---|---|
+| `publicProcedure` | none |
+| `adminProcedure` | `requireAdmin` → `rateLimit` (60 req/min) |
+| `adminMutationProcedure` | `requireAdmin` → `rateLimit` → `csrfProtection` |
 
 ---
 
@@ -272,14 +291,15 @@ Every paginated endpoint follows this contract exactly — no exceptions.
 { data: T[], nextCursor: string | null }
 ```
 
-**TanStack Query pattern:**
+**TanStack Query pattern (via tRPC):**
 ```ts
-useInfiniteQuery({
-  queryKey: ['links', filters],
-  queryFn:  ({ pageParam }) => fetchLinks({ cursor: pageParam, ...filters }),
-  getNextPageParam: (last) => last.nextCursor ?? undefined,
-  initialPageParam: undefined,
-})
+api.links.list.useInfiniteQuery(
+  { limit: 20 },
+  {
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    initialPageParam: undefined,
+  },
+)
 ```
 
 ---
