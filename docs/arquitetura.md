@@ -18,7 +18,21 @@ graph TB
         CC["Client Components"]
     end
 
-    subgraph Services["☁️ Serviços"]
+    subgraph ServiceLayer["📦 Service Layer"]
+        LS["LinkService"]
+        AS["AnalyticsService"]
+        AuS["AuthService"]
+        CS["CacheService"]
+        RS["RedirectService"]
+    end
+
+    subgraph RepoLayer["🗄️ Repository Layer"]
+        LR["LinkRepository"]
+        CR["ClickRepository"]
+        AR["AuditRepository"]
+    end
+
+    subgraph Infra["☁️ Infraestrutura"]
         PG[("PostgreSQL")]
         REDIS[("Redis")]
     end
@@ -31,11 +45,20 @@ graph TB
     SC -->|"createSSRCaller()"| tRPC
     CC -->|"api.xxx.useMutation()"| tRPC
 
-    tRPC -->|adminProcedure + Drizzle| PG
-    tRPC -->|cache + rate limit| REDIS
+    tRPC -->|delega| ServiceLayer
 
-    RH -->|dados persistentes| PG
-    RH -->|cache + rate limit| REDIS
+    ServiceLayer -->|DomainError → errorMapper middleware → TRPCError| tRPC
+
+    ServiceLayer -->|orquestra| RepoLayer
+    ServiceLayer -->|cache + rate limit| REDIS
+    ServiceLayer -->|trackClick| REDIS
+
+    RH -->|delega| RS
+    RS -->|resolveSlug + rateLimit| REDIS
+    RS -->|trackClick| REDIS
+
+    RepoLayer -->|Drizzle ORM| PG
+    RepoLayer -->|INSERT batch| PG
 ```
 
 ## Estrutura de Pastas
@@ -44,7 +67,7 @@ graph TB
 src/
 ├── app/                    # App Router (páginas + tRPC handler)
 │   ├── [slug]/
-│   │   └── route.ts        # Motor de redirect (Node.js) — não migrado para tRPC
+│   │   └── route.ts        # Motor de redirect (Node.js) — delegado ao RedirectService
 │   ├── admin/
 │   │   ├── layout.tsx      # QueryProvider (TRPCProvider)
 │   │   ├── login/          # Página de login (GSAP, tRPC mutation)
@@ -55,21 +78,25 @@ src/
 │   └── api/trpc/[trpc]/
 │       └── route.ts        # Único HTTP handler tRPC
 ├── server/                 # tRPC
-│   ├── trpc.ts             # Context, middleware, procedures builders
+│   ├── trpc.ts             # Context, middleware, procedures builders (incl. errorMapper)
 │   └── routers/
 │       ├── _app.ts         # appRouter
-│       ├── auth.ts         # login mutation
-│       ├── links.ts        # CRUD
-│       ├── analytics.ts    # Queries
-│       └── cache.ts        # Wipe
+│       ├── auth.ts         # login mutation → AuthService
+│       ├── links.ts        # CRUD → LinkService
+│       ├── analytics.ts    # Queries → AnalyticsService
+│       └── cache.ts        # Wipe → CacheService
 ├── components/             # UI components
 │   ├── ui/                 # shadcn primitives
 │   ├── links/              # Link list, card, forms (tRPC hooks)
 │   ├── analytics/
 │   └── charts/             # Recharts wrappers
 ├── lib/
+│   ├── errors/             # DomainError, NotFoundError, BadRequestError...
+│   ├── response/           # SuccessResponse, ErrorResponse helpers
+│   ├── services/           # LinkService, AnalyticsService, AuthService, CacheService, RedirectService
+│   ├── repositories/       # LinkRepository, ClickRepository, AuditRepository (interfaces + classes)
 │   ├── trpc/               # tRPC client + server caller
-│   ├── db/                 # Drizzle schema + queries
+│   ├── db/                 # Drizzle schema + client (queries movidas para repositories/)
 │   ├── redis/              # Cache client + rate limiter + buffer
 │   ├── analytics/          # Click tracking + flush
 │   ├── auth/               # JWT, session, guards, actions
@@ -129,13 +156,16 @@ sequenceDiagram
 
 | Componente | Arquivo | Papel |
 |---|---|---|
-| Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, rate limit, redireciona |
+| Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, rate limit, redireciona (via RedirectService) |
 | Auth Guard | `src/proxy.ts` | Protege rotas `/admin/*`, verifica JWT |
 | tRPC Handler | `src/app/api/trpc/[trpc]/route.ts` | HTTP handler único para todas as APIs |
-| tRPC Middleware | `src/server/trpc.ts` | `adminProcedure`, `adminMutationProcedure` |
+| tRPC Middleware | `src/server/trpc.ts` | `adminProcedure`, `adminMutationProcedure`, `errorMapper` |
+| Services | `src/lib/services/` | LinkService, AnalyticsService, AuthService, CacheService, RedirectService |
+| Repositories | `src/lib/repositories/` | LinkRepository, ClickRepository, AuditRepository (classes com DI) |
+| Domain Errors | `src/lib/errors/` | DomainError, NotFoundError, BadRequestError... |
+| Response | `src/lib/response/` | SuccessResponse, ErrorResponse helpers |
 | Rate Limiter | `src/lib/redis/rate-limit.ts` | Lua script p/ sliding window |
 | Slug Cache | `src/lib/redis/index.ts` | Cache-aside de slugs |
-| Queries | `src/lib/db/queries/` | SQL tipado via Drizzle |
 
 ### Client-Side (Admin)
 

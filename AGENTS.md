@@ -87,7 +87,15 @@ Este projeto usa **tRPC v11** com superjson como camada de API, substituindo rou
 - `[slug]/route.ts` — route handler de redirect (não é API)
 - `proxy.ts` — auth guard Node.js
 - `logoutAction` — Server Action
-- `src/lib/db/queries/` — queries Drizzle (chamadas pelos routers, não expostas)
+- `src/lib/services/` — services (chamados pelos routers, não expostos)
+- `src/lib/repositories/` — repositories (chamados pelos services, não expostos)
+
+## Service & Repository Rules
+
+- Services em `src/lib/services/` orquestram lógica de negócio e lançam `DomainError`
+- Repositories em `src/lib/repositories/` encapsulam Drizzle, com interfaces para DI
+- `errorMapper` middleware no tRPC converte `DomainError` → `TRPCError`
+- Response helpers (`SuccessResponse`, `ErrorResponse`) em `src/lib/response/`
 <!-- END:trpc-rules -->
 
 <!-- END:docs-sync -->

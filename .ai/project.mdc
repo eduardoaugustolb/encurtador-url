@@ -43,9 +43,25 @@
 - shadcn primitives live in `src/components/ui/` — do not modify them directly
 - Business-logic components live in `src/components/{domain}/`
 
+## Service & Repository Rules
+
+- All business logic lives in **services** (`src/lib/services/`) — never in routers or route handlers
+- Services lançam `DomainError` (de `src/lib/errors/`) — nunca `TRPCError`
+- Repositories (`src/lib/repositories/`) encapsulam acesso a dados via Drizzle
+- Repositories são classes com constructor DI (`db: DB`) — permitem mocks sem `mock.module()`
+- Services dependem de interfaces (`ILinkRepository`) — não de classes concretas
+- Singletons são exportados para produção, construtores para testes
+
+## Error Handling Rules
+
+- `DomainError` é a base de todos os erros de domínio
+- `errorMapper` middleware no tRPC converte `DomainError` → `TRPCError` automaticamente
+- Response helpers (`SuccessResponse`, `ErrorResponse` de `src/lib/response/`) são para REST route handlers apenas
+- Use `new SuccessResponse(data)` e `new ErrorResponse({ code, message })` em route handlers
+
 ## Database Rules
 
-- All Drizzle queries live in `src/lib/db/queries/` — not inline in route handlers
+- All Drizzle queries live in **repositories** (`src/lib/repositories/`) — not inline in route handlers
 - Every mutable query must have a `.where()` clause
 - Schema changes require: `bunx drizzle-kit generate` + `bunx drizzle-kit migrate`
 - Cascade deletes defined at schema level, not application level

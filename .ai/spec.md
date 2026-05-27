@@ -75,16 +75,29 @@ src/
 │   ├── logo.tsx
 │   └── ascii-text.tsx
 ├── lib/
+│   ├── errors/                    # DomainError, NotFoundError, BadRequestError...
+│   │   └── index.ts
+│   ├── response/                  # SuccessResponse, ErrorResponse helpers
+│   │   └── index.ts
+│   ├── services/                  # Service layer (business logic, DI-friendly)
+│   │   ├── link-service.ts        # LinkService — CRUD + validação + audit
+│   │   ├── analytics-service.ts   # AnalyticsService — flush + queries
+│   │   ├── auth-service.ts        # AuthService — login + rate limit
+│   │   ├── cache-service.ts       # CacheService — wipe cache
+│   │   ├── redirect-service.ts    # RedirectService — resolve + track
+│   │   └── index.ts
+│   ├── repositories/              # Repository layer (data access, DI-friendly)
+│   │   ├── link-repository.ts     # LinkRepository — paginate, CRUD
+│   │   ├── click-repository.ts    # ClickRepository — analytics queries
+│   │   ├── audit-repository.ts    # AuditRepository — record audit
+│   │   └── index.ts
 │   ├── trpc/
 │   │   ├── react.tsx              # createTRPCReact + TRPCProvider client-side
 │   │   └── server.ts              # createSSRCaller for Server Components
 │   ├── db/
-│   │   ├── index.ts               # Drizzle client
+│   │   ├── index.ts               # Drizzle client + DB type
 │   │   ├── schema.ts
-│   │   └── queries/
-│   │       ├── links.ts
-│   │       ├── analytics.ts
-│   │       └── audit.ts
+│   │   └── queries/               # REMOVIDO — movido para repositories/
 │   ├── redis/
 │   │   ├── index.ts               # ioredis client + slug helpers
 │   │   ├── cache.ts               # clearSlugCache (SCAN + DEL)
@@ -109,13 +122,13 @@ src/
 │   ├── telemetry.ts               # OpenTelemetry traceStep wrapper
 │   └── utils.ts
 ├── server/
-│   ├── trpc.ts                    # tRPC context, middleware, procedure builders
+│   ├── trpc.ts                    # tRPC context, middleware, procedure builders (incl. errorMapper)
 │   └── routers/
 │       ├── _app.ts                # appRouter + createCallerFactory
-│       ├── auth.ts                # login mutation
-│       ├── links.ts               # list, getById, create, update, delete
-│       ├── analytics.ts           # summary, clicksOverTime, topLinks, topReferrers, export
-│       └── cache.ts               # wipe mutation
+│       ├── auth.ts                # login mutation → AuthService
+│       ├── links.ts               # list, getById, create, update, delete → LinkService
+│       ├── analytics.ts           # summary, clicksOverTime, topLinks, topReferrers, export → AnalyticsService
+│       └── cache.ts               # wipe mutation → CacheService
 ├── proxy.ts                        # Node.js — admin auth guard (/admin/:path*)
 ├── env.ts                          # @t3-oss/env-nextjs
 └── instrumentation.ts              # Vercel OTel registration

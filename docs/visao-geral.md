@@ -127,6 +127,22 @@ Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada c
 
 Toda operação de mutação (create/update/delete link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
 
+### 15. Services + Repositories (Camadas de Domínio)
+
+A lógica de negócio foi organizada em **services** e **repositories** para facilitar testes e refatorações:
+
+- **Repositories** (`src/lib/repositories/`): Classes com constructor DI que encapsulam acesso a dados via Drizzle. Cada domain tem sua interface (`ILinkRepository`) e implementação (`LinkRepository`), permitindo mocks em testes sem `mock.module()`.
+- **Services** (`src/lib/services/`): Orquestram repositórios + Redis + validadores. Lançam `DomainError` em vez de `TRPCError`, mantendo-se desacoplados do tRPC.
+- **Error Mapper**: Middleware no tRPC (`errorMapper`) captura `DomainError` e converte para `TRPCError` automaticamente.
+- **Response Helpers** (`src/lib/response/`): `SuccessResponse` e `ErrorResponse` para uso em route handlers REST.
+
+**Fluxo atual:**
+```
+Router (tRPC) → Service → Repository → PostgreSQL
+                    ↘ Redis, validators, audit
+Router (tRPC) ← Service ← DomainError (convertido para TRPCError pelo errorMapper)
+```
+
 ---
 
 [← README](README.md) · [Arquitetura →](arquitetura.md)

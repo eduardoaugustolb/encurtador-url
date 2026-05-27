@@ -2,6 +2,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import type { NextRequest } from "next/server";
 import superjson from "superjson";
 import { verifySession } from "@/lib/auth/session";
+import { DomainError } from "@/lib/errors";
 import { checkRateLimit, rateLimitKey } from "@/lib/redis/rate-limit";
 
 interface CreateContextOptions {
@@ -61,9 +62,36 @@ const csrfProtection = t.middleware(({ ctx, next }) => {
   return next({ ctx });
 });
 
-export const publicProcedure = t.procedure;
-export const adminProcedure = t.procedure.use(requireAdmin).use(rateLimit);
+const errorMapper = t.middleware(async ({ ctx, next }) => {
+  try {
+    return await next({ ctx });
+  } catch (err) {
+    if (err instanceof DomainError) {
+      const codeMap: Record<string, TRPCError["code"]> = {
+        BAD_REQUEST: "BAD_REQUEST",
+        UNAUTHORIZED: "UNAUTHORIZED",
+        FORBIDDEN: "FORBIDDEN",
+        NOT_FOUND: "NOT_FOUND",
+        TOO_MANY_REQUESTS: "TOO_MANY_REQUESTS",
+        CONFLICT: "CONFLICT",
+        INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
+      };
+      throw new TRPCError({
+        code: codeMap[err.code] ?? "BAD_REQUEST",
+        message: err.message,
+      });
+    }
+    throw err;
+  }
+});
+
+export const publicProcedure = t.procedure.use(errorMapper);
+export const adminProcedure = t.procedure
+  .use(errorMapper)
+  .use(requireAdmin)
+  .use(rateLimit);
 export const adminMutationProcedure = t.procedure
+  .use(errorMapper)
   .use(requireAdmin)
   .use(rateLimit)
   .use(csrfProtection);
