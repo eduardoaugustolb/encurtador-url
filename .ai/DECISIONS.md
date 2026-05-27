@@ -60,3 +60,38 @@
 **Context:** Protects against abuse of the redirect as a URL-based reflector. Rate limiting uses Redis sorted sets with an atomic Lua script.
 
 **Consequence:** Rate-limited requests receive a 404 (no indication of the reason).
+
+---
+
+## ADR-007 — Route Handlers → tRPC v11
+
+**Decision:** Replace all `src/app/api/*/route.ts` with tRPC v11 using superjson transformer and a single `/api/trpc` HTTP handler.
+
+**Context:** The 9 route handlers had duplicated patterns (auth guard, Zod validation, response formatting) with zero type safety between client and server. tRPC eliminates runtime type errors by generating types from procedure definitions. The existing Zod schemas are reused as procedure inputs.
+
+**What changed:**
+- 9 route handlers → 4 tRPC routers (`auth`, `links`, `analytics`, `cache`)
+- `requireAdminWithRateLimit()` → tRPC `adminProcedure` middleware chain
+- CSRF validation → tRPC `adminMutationProcedure` (includes CSRF middleware)
+- Client `fetch()` calls → `api.xxx.useMutation()` / `useQuery()` hooks
+- SSR data fetching → `createSSRCaller()` (tRPC server caller)
+- `[slug]/route.ts` remains a route handler (HTTP 307 redirect, not an API)
+
+**Status:** Implemented.
+
+---
+
+## ADR-008 — Services + Repositories (camadas de domínio)
+
+**Decision:** Adicionar camadas Service e Repository com injeção de dependência por constructor.
+
+**Context:** As queries Drizzle estavam misturadas com lógica de negócio nos routers, dificultando testes e refatorações. Introduzimos interfaces, classes com DI, e DomainError desacoplado do tRPC.
+
+**O que mudou:**
+- `src/lib/db/queries/` → `src/lib/repositories/` (LinkRepository, ClickRepository, AuditRepository)
+- `src/server/routers/` delegam lógica para `src/lib/services/`
+- `DomainError` (em `src/lib/errors/`) substitui `TRPCError` nos services
+- `errorMapper` middleware converte `DomainError` → `TRPCError` automaticamente
+- Response helpers `SuccessResponse`/`ErrorResponse` em `src/lib/response/`
+
+**Status:** Implementado.

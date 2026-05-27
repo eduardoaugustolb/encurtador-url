@@ -1,5 +1,10 @@
 import { mock } from "bun:test";
-import { createMockRedis, createMockDb, type MockRedisClient, type MockDbClient } from "./mocks";
+import {
+  createMockRedis,
+  createMockDb,
+  type MockRedisClient,
+  type MockDbClient,
+} from "./mocks";
 
 process.env.DATABASE_URL = "postgresql://localhost:5432/test";
 process.env.REDIS_URL = "redis://localhost:6379";

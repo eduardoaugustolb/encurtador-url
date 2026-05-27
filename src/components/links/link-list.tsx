@@ -3,28 +3,44 @@
 import { useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import type { InfiniteData } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { api } from "@/lib/trpc/react";
 import { useInfiniteLinks } from "@/lib/hooks/use-infinite-links";
 import { useIntersection } from "@/lib/hooks/use-intersection";
 import { CreateLinkForm } from "./create-link-form";
 import { EditLinkDialog } from "./edit-link-dialog";
 import { LinkCard } from "./link-card";
+import { LinkListSkeleton } from "./link-list-skeleton";
+import { ErrorBoundary } from "@/components/error-boundary";
 import type { Link } from "./types";
 
 gsap.registerPlugin(useGSAP);
 
-interface Props {
-  initialData?: InfiniteData<{
-    data: Link[];
-    nextCursor: string | null;
-  }>;
-}
+interface Props {}
 
-export function LinkList({ initialData }: Props) {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
-    useInfiniteLinks(initialData);
+export function LinkList({}: Props) {
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+    isError,
+    refetch,
+    error,
+  } = useInfiniteLinks();
 
   const [editingLink, setEditingLink] = useState<Link | null>(null);
+
+  const deleteMutation = api.links.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Link deleted successfully");
+      refetch();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
 
   const container = useRef<HTMLDivElement>(null);
   const cardListRef = useRef<HTMLDivElement>(null);
@@ -55,40 +71,59 @@ export function LinkList({ initialData }: Props) {
 
   const links = data?.pages.flatMap((p) => p.data).filter(Boolean) ?? [];
 
-  return (
-    <div ref={container} className="space-y-4">
-      <CreateLinkForm onCreated={() => refetch()} />
+  if (isFetching && !data) return <LinkListSkeleton />;
 
-      <div ref={cardListRef} className="space-y-2">
-        {links.map((link) => (
-          <LinkCard
-            key={link.id}
-            link={link}
-            onEdit={setEditingLink}
-            onDelete={async (id) => {
-              await fetch(`/api/links/${id}`, { method: "DELETE" });
+  if (isError) {
+    return (
+      <div className="space-y-4">
+        <CreateLinkForm onCreated={() => refetch()} />
+        <div className="flex flex-col items-center justify-center rounded-lg border border-destructive/50 p-8 text-center">
+          <p className="text-sm text-destructive">
+            Failed to load links.{" "}
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="underline hover:text-foreground"
+            >
+              Try again
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <div ref={container} className="space-y-4">
+        <CreateLinkForm onCreated={() => refetch()} />
+
+        <div ref={cardListRef} className="space-y-2">
+          {links.map((link) => (
+            <LinkCard
+              key={link.id}
+              link={link}
+              onEdit={setEditingLink}
+              onDelete={(id) => deleteMutation.mutate({ id })}
+            />
+          ))}
+        </div>
+
+        <div ref={sentinelRef}>
+          {isFetchingNextPage && <LinkListSkeleton />}
+        </div>
+
+        {editingLink && (
+          <EditLinkDialog
+            link={editingLink}
+            onClose={() => setEditingLink(null)}
+            onUpdated={() => {
+              setEditingLink(null);
               refetch();
             }}
           />
-        ))}
-      </div>
-
-      <div ref={sentinelRef}>
-        {isFetchingNextPage && (
-          <p className="text-center text-sm text-neutral-400">Loading...</p>
         )}
       </div>
-
-      {editingLink && (
-        <EditLinkDialog
-          link={editingLink}
-          onClose={() => setEditingLink(null)}
-          onUpdated={() => {
-            setEditingLink(null);
-            refetch();
-          }}
-        />
-      )}
-    </div>
+    </ErrorBoundary>
   );
 }

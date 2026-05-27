@@ -7,9 +7,17 @@ export interface MockRedisPipeline {
 }
 
 export interface MockRedisClient {
-  eval: Mock<(script: string, numKeys: number, ...args: string[]) => Promise<unknown>>;
+  eval: Mock<
+    (script: string, numKeys: number, ...args: string[]) => Promise<unknown>
+  >;
   get: Mock<(key: string) => Promise<string | null>>;
-  set: Mock<(key: string, value: string, ...args: (string | number)[]) => Promise<"OK" | null>>;
+  set: Mock<
+    (
+      key: string,
+      value: string,
+      ...args: (string | number)[]
+    ) => Promise<"OK" | null>
+  >;
   setex: Mock<(key: string, seconds: number, value: string) => Promise<"OK">>;
   del: Mock<(key: string) => Promise<number>>;
   lpush: Mock<(key: string, value: string) => Promise<number>>;
@@ -29,9 +37,7 @@ export interface MockDbClient {
   query: {
     links: {
       findFirst: Mock<
-        (
-          opts: unknown,
-        ) => Promise<{
+        (opts: unknown) => Promise<{
           id: string;
           destinationUrl: string;
           isActive: boolean;

@@ -6,7 +6,24 @@ Bit Link permite criar URLs curtas (ex: `encurta.dev/abc1234`) que redirecionam 
 
 ## Conceitos Aplicados
 
-### 1. App Router com Server Components
+### 1. tRPC — Type Safety Full-Stack
+
+Todas as APIs admin são expostas via **tRPC v11** com transformer superjson, substituindo os 9 route handlers REST anteriores. Um único HTTP handler em `api/trpc/[trpc]/route.ts` serve todos os procedimentos.
+
+**Benefícios:**
+- Tipos gerados automaticamente das definições de procedimento — zero `fetch()` manual
+- Zod schemas reutilizados como input das procedures
+- Middleware chain substitui `requireAdminWithRateLimit` repetido
+- CSRF automático em mutations via middleware
+- Server Components usam `createSSRCaller()` para SSR type-safe
+- Cliente usa hooks tipados: `api.links.list.useQuery()`, `api.auth.login.useMutation()`
+
+**O que não migrou:**
+- `[slug]/route.ts` (redirect HTTP 307) — não é uma API
+- `proxy.ts` (auth guard) — interceptor Node.js, não tRPC
+- `logoutAction` (Server Action) — não precisa de API
+
+### 2. App Router com Server Components
 
 Next.js 16 com App Router. A página de redirect (`/[slug]`) é um **Route Handler** (`force-dynamic`) que executa lógica no servidor e nunca envia JS ao cliente. O painel admin mescla Server Components (dados iniciais SSR) e Client Components (interatividade).
 
@@ -109,6 +126,22 @@ Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada c
 ### 14. Audit Logging
 
 Toda operação de mutação (create/update/delete link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
+
+### 15. Services + Repositories (Camadas de Domínio)
+
+A lógica de negócio foi organizada em **services** e **repositories** para facilitar testes e refatorações:
+
+- **Repositories** (`src/lib/repositories/`): Classes com constructor DI que encapsulam acesso a dados via Drizzle. Cada domain tem sua interface (`ILinkRepository`) e implementação (`LinkRepository`), permitindo mocks em testes sem `mock.module()`.
+- **Services** (`src/lib/services/`): Orquestram repositórios + Redis + validadores. Lançam `DomainError` em vez de `TRPCError`, mantendo-se desacoplados do tRPC.
+- **Error Mapper**: Middleware no tRPC (`errorMapper`) captura `DomainError` e converte para `TRPCError` automaticamente.
+- **Response Helpers** (`src/lib/response/`): `SuccessResponse` e `ErrorResponse` para uso em route handlers REST.
+
+**Fluxo atual:**
+```
+Router (tRPC) → Service → Repository → PostgreSQL
+                    ↘ Redis, validators, audit
+Router (tRPC) ← Service ← DomainError (convertido para TRPCError pelo errorMapper)
+```
 
 ---
 

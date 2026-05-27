@@ -7,6 +7,7 @@ import gsap from "gsap";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/lib/auth/actions";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 gsap.registerPlugin(useGSAP);
 
@@ -23,12 +24,24 @@ export default function DashboardLayout({
     tl.fromTo(
       headerRef.current,
       { opacity: 0, y: -16, filter: "blur(4px)" },
-      { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.5, ease: "power2.out" },
+      {
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        duration: 0.5,
+        ease: "power2.out",
+      },
     );
     tl.fromTo(
       mainRef.current,
       { opacity: 0, y: 12, filter: "blur(4px)" },
-      { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.5, ease: "power2.out" },
+      {
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        duration: 0.5,
+        ease: "power2.out",
+      },
     );
   });
 
@@ -58,7 +71,9 @@ export default function DashboardLayout({
           </div>
         </nav>
       </header>
-      <main ref={mainRef} className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main ref={mainRef} className="mx-auto max-w-5xl px-4 py-8">
+        <ErrorBoundary>{children}</ErrorBoundary>
+      </main>
     </div>
   );
 }

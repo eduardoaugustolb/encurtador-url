@@ -4,34 +4,64 @@
 
 - Next.js 16 (App Router), TypeScript strict, Tailwind CSS, shadcn/ui
 - Drizzle ORM + Postgres, ioredis, TanStack Query v5, Zod, Recharts
+- **tRPC v11** (superjson) — type-safe API layer replacing Route Handlers
 - Vercel deployment, Square Cloud for Postgres + Redis
 
 ## Critical Next.js 16 Conventions
 
 - `proxy.ts` = Node.js interceptor (auth only, `/admin/:path*`)
-- `[slug]/route.ts` = Node.js route handler for slug resolution + redirect
+- `[slug]/route.ts` = Node.js route handler for slug resolution + redirect — **NOT migrated to tRPC**
 - No `middleware.ts` in this project — redirect does not run on Edge
 - `"use cache"` directive — **not used** in this project (analytics queries flush a Redis buffer instead)
 - `params` in pages and route handlers are async — always `await params`
 - `after()` from `next/server` for fire-and-forget background tasks (replaces `waitUntil`)
+
+## tRPC Rules
+
+- All admin API procedures go through `adminProcedure` (auth + rate limit)
+- Mutations on links require `adminMutationProcedure` (includes CSRF middleware)
+- Public procedures (`auth.login`) use `publicProcedure` with explicit rate limiting
+- **Export endpoint** (`analytics.export`): returns JSON, not CSV (LGPD compliance — no bulk personal data download)
+- tRPC routers live in `src/server/routers/` — one file per domain
+- Zod schemas from `src/lib/validators/` are reused as procedure inputs
+- Server Components use `createSSRCaller()` from `src/lib/trpc/server.ts` for data fetching
+- Client components use `api.xxx.useQuery()` / `useMutation()` from `src/lib/trpc/react.ts`
+- The `TRPCProvider` wraps the app via `QueryProvider` in the admin layout
+- `[slug]/route.ts` remains a route handler — it's an HTTP redirect, not an API
 
 ## Code Conventions
 
 - No `any`. No `as unknown as T`. TypeScript strict is not negotiable.
 - All API inputs validated with Zod — shared schemas in `src/lib/validators/`
 - Use `env.X` from `@/env` — never `process.env.X` directly
-- Path aliases: `@/lib`, `@/components`, `@/db`, `@/env`
+- Path aliases: `@/lib`, `@/components`, `@/db`, `@/env`, `@/server`
 - Server-only modules must have `import 'server-only'` at the top
 
 ## Component Rules
 
-- Default to Server Components. Add `"use client"` only when you need browser APIs, event handlers, or TanStack Query hooks.
+- Default to Server Components. Add `"use client"` only when you need browser APIs, event handlers, or tRPC hooks.
 - shadcn primitives live in `src/components/ui/` — do not modify them directly
 - Business-logic components live in `src/components/{domain}/`
 
+## Service & Repository Rules
+
+- All business logic lives in **services** (`src/lib/services/`) — never in routers or route handlers
+- Services lançam `DomainError` (de `src/lib/errors/`) — nunca `TRPCError`
+- Repositories (`src/lib/repositories/`) encapsulam acesso a dados via Drizzle
+- Repositories são classes com constructor DI (`db: DB`) — permitem mocks sem `mock.module()`
+- Services dependem de interfaces (`ILinkRepository`) — não de classes concretas
+- Singletons são exportados para produção, construtores para testes
+
+## Error Handling Rules
+
+- `DomainError` é a base de todos os erros de domínio
+- `errorMapper` middleware no tRPC converte `DomainError` → `TRPCError` automaticamente
+- Response helpers (`SuccessResponse`, `ErrorResponse` de `src/lib/response/`) são para REST route handlers apenas
+- Use `new SuccessResponse(data)` e `new ErrorResponse({ code, message })` em route handlers
+
 ## Database Rules
 
-- All Drizzle queries live in `src/lib/db/queries/` — not inline in route handlers
+- All Drizzle queries live in **repositories** (`src/lib/repositories/`) — not inline in route handlers
 - Every mutable query must have a `.where()` clause
 - Schema changes require: `bunx drizzle-kit generate` + `bunx drizzle-kit migrate`
 - Cascade deletes defined at schema level, not application level
@@ -40,7 +70,7 @@
 
 - All list endpoints: cursor-based, `{ data: T[], nextCursor: string | null }`
 - Cursor: `btoa(JSON.stringify({ createdAt, id }))`
-- Client: `useInfiniteQuery` + `getNextPageParam: (last) => last.nextCursor ?? undefined`
+- Client: `api.links.list.useInfiniteQuery` — tRPC handles TanStack Query integration
 - No offset pagination anywhere in the codebase
 
 ## Analytics Rules
@@ -54,10 +84,10 @@
 
 ## Auth Rules
 
-- Login rate-limited: 5 req/min per IP
-- Admin API rate-limited: 60 req/min per IP
-- POST/PATCH/DELETE on links require CSRF validation via `validateOrigin()`
-- Logout uses Server Action (`logoutAction`), not an API route
+- Login rate-limited: 5 req/min per IP (inside `auth.login` procedure)
+- Admin API rate-limited: 60 req/min per IP (via `adminProcedure` middleware)
+- POST/PATCH/DELETE on links require CSRF validation (via `adminMutationProcedure` middleware)
+- Logout uses Server Action (`logoutAction`), not a tRPC procedure
 
 ## Git Rules
 

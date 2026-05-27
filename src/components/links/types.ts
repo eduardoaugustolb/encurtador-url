@@ -4,6 +4,6 @@ export interface Link {
   destinationUrl: string;
   title: string | null;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }

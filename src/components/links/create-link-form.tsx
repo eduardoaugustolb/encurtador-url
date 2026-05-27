@@ -3,10 +3,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import {
   type CreateLinkInput,
   createLinkSchema,
 } from "@/lib/validators/link-schema";
+import { api } from "@/lib/trpc/react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -19,6 +21,19 @@ export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
   const [open, setOpen] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  const createMutation = api.links.create.useMutation({
+    onSuccess: () => {
+      toast.success("Link created successfully");
+      reset();
+      setOpen(false);
+      onCreated();
+    },
+    onError: (err) => {
+      setApiError(err.message);
+      toast.error(err.message);
+    },
+  });
+
   const {
     register,
     handleSubmit,
@@ -30,21 +45,7 @@ export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
 
   async function onSubmit(data: CreateLinkInput) {
     setApiError(null);
-    const res = await fetch("/api/links", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Request failed" }));
-      setApiError(err.error ?? "Request failed");
-      return;
-    }
-
-    reset();
-    setOpen(false);
-    onCreated();
+    createMutation.mutate(data);
   }
 
   if (!open) {
@@ -96,8 +97,11 @@ export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
       {apiError && <p className="text-xs text-destructive">{apiError}</p>}
 
       <div className="flex gap-2">
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Creating..." : "Create"}
+        <Button
+          type="submit"
+          disabled={isSubmitting || createMutation.isPending}
+        >
+          {createMutation.isPending ? "Creating..." : "Create"}
         </Button>
         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
           Cancel

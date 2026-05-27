@@ -47,4 +47,55 @@ Regras:
 - Mantenha diagramas (Mermaid) sincronizados com o código real
 - `docs/README.md` lista todas as docs — mantenha a descrição precisa
 - Não crie docs que não existiam, a menos que a mudança introduza um conceito novo que precise ser explicado
+<!-- BEGIN:trpc-rules -->
+# tRPC v11 — Regras para Agentes
+
+Este projeto usa **tRPC v11** com superjson como camada de API, substituindo route handlers.
+
+## Estrutura
+
+- `src/server/trpc.ts` — Context, `adminProcedure`, `adminMutationProcedure`, `publicProcedure`
+- `src/server/routers/_app.ts` — `appRouter` + `createCaller`
+- `src/server/routers/<domain>.ts` — Um arquivo por domínio (auth, links, analytics, cache)
+- `src/app/api/trpc/[trpc]/route.ts` — Único HTTP handler
+- `src/lib/trpc/react.tsx` — `createTRPCReact` + `TRPCProvider`
+- `src/lib/trpc/server.ts` — `createSSRCaller()` para Server Components
+
+## Procedures
+
+| Builder | Uso |
+|---|---|
+| `publicProcedure` | Login (rate limit manual) |
+| `adminProcedure` | Queries admin (auth + rate limit 60/min) |
+| `adminMutationProcedure` | Mutations admin (auth + rate limit + CSRF) |
+
+## Client-Side
+
+- Componentes client: `api.<router>.<procedure>.useQuery()` / `.useMutation()`
+- Infinite query: `api.links.list.useInfiniteQuery()`
+- SSR: `createSSRCaller()` → `caller.links.list()`
+- `TRPCProvider` está no `QueryProvider`, que envolve o admin layout
+
+## Tipos com superjson
+
+- **Date**: superjson serializa `Date` → string no transporte e deserializa de volta para `Date` no cliente.
+- **Tipos de entidade** (ex: `Link.createdAt`) devem usar `Date` no TypeScript, **não `string`**.
+- **initialData**: evitar `initialData` nas queries — preferir fallback com `??` e SSR props. O tipo inferido pelo tRPC nem sempre corresponde ao formato dos dados SSR.
+
+## O que NÃO é tRPC
+
+- `[slug]/route.ts` — route handler de redirect (não é API)
+- `proxy.ts` — auth guard Node.js
+- `logoutAction` — Server Action
+- `src/lib/services/` — services (chamados pelos routers, não expostos)
+- `src/lib/repositories/` — repositories (chamados pelos services, não expostos)
+
+## Service & Repository Rules
+
+- Services em `src/lib/services/` orquestram lógica de negócio e lançam `DomainError`
+- Repositories em `src/lib/repositories/` encapsulam Drizzle, com interfaces para DI
+- `errorMapper` middleware no tRPC converte `DomainError` → `TRPCError`
+- Response helpers (`SuccessResponse`, `ErrorResponse`) em `src/lib/response/`
+<!-- END:trpc-rules -->
+
 <!-- END:docs-sync -->

@@ -4,11 +4,9 @@ import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-import { trackClick } from "@/lib/analytics/track";
-import { resolveSlug } from "@/lib/redis";
-import { checkRateLimit, rateLimitKey } from "@/lib/redis/rate-limit";
-import { traceStep } from "@/lib/telemetry";
 import { createAudit } from "@/lib/audit";
+import { DomainError } from "@/lib/errors";
+import { redirectService } from "@/lib/services";
 
 let getCallSeq = 0;
 let moduleInit = Date.now();
@@ -46,50 +44,40 @@ export async function GET(
     allHeaders: Object.fromEntries(hdrs.entries()),
   });
 
-  const [rl, link] = await Promise.all([
-    traceStep("rate-limit", () =>
-      checkRateLimit({
-        windowMs: 60_000,
-        max: 100,
-        key: rateLimitKey("slug-resolve", ip),
-      }),
-    ),
-    traceStep("resolve-slug", () => resolveSlug(slug), { slug }),
-  ]);
+  try {
+    const result = await redirectService.resolve(slug, ip, {
+      referer: hdrs.get("referer"),
+      country: hdrs.get("x-vercel-ip-country"),
+      userAgent: hdrs.get("user-agent"),
+    });
 
-  if (!rl.allowed) {
-    audit("rate-limit.blocked");
-    notFound();
-  }
+    audit("after.register", {
+      linkId: result.link.id,
+      destination: result.link.destinationUrl,
+    });
 
-  if (!link || !link.isActive) {
-    audit("link.not-found", { linkFound: !!link, isActive: link?.isActive });
-    notFound();
-  }
+    after(async () => {
+      audit("after.executed");
+      const t0 = performance.now();
+      try {
+        await redirectService.trackClick(result.tracking);
+        audit("track-click.completed", { durationMs: performance.now() - t0 });
+      } catch (err) {
+        audit("track-click.error", {
+          error: (err as Error).message,
+          stack: (err as Error).stack,
+        });
+      }
+    });
 
-  audit("after.register", { linkId: link.id, destination: link.destinationUrl });
-
-  after(async () => {
-    audit("after.executed");
-    const t0 = performance.now();
-    try {
-      await traceStep("track-click", () =>
-        trackClick({
-          linkId: link.id,
-          referrer: hdrs.get("referer"),
-          country: hdrs.get("x-vercel-ip-country"),
-          userAgent: hdrs.get("user-agent"),
-        }),
-      );
-      audit("track-click.completed", { durationMs: performance.now() - t0 });
-    } catch (err) {
-      audit("track-click.error", {
-        error: (err as Error).message,
-        stack: (err as Error).stack,
-      });
+    audit("request.redirect", { destination: result.link.destinationUrl });
+    return Response.redirect(result.link.destinationUrl, 307);
+  } catch (err) {
+    if (err instanceof DomainError) {
+      audit("service.error", { code: err.code, message: err.message });
+    } else {
+      audit("service.error", { message: (err as Error).message });
     }
-  });
-
-  audit("request.redirect", { destination: link.destinationUrl });
-  return Response.redirect(link.destinationUrl, 307);
+    notFound();
+  }
 }

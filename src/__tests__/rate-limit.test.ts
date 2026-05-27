@@ -7,9 +7,7 @@ beforeEach(() => {
 
 describe("checkRateLimit", () => {
   test("allows request when under limit", async () => {
-    globalThis.__mockRedis.eval.mockImplementationOnce(
-      async () => [1, 5],
-    );
+    globalThis.__mockRedis.eval.mockImplementationOnce(async () => [1, 5]);
 
     const result = await checkRateLimit({
       windowMs: 60_000,
@@ -22,9 +20,7 @@ describe("checkRateLimit", () => {
   });
 
   test("blocks request when at limit", async () => {
-    globalThis.__mockRedis.eval.mockImplementationOnce(
-      async () => [0, 100],
-    );
+    globalThis.__mockRedis.eval.mockImplementationOnce(async () => [0, 100]);
 
     const result = await checkRateLimit({
       windowMs: 60_000,
@@ -59,9 +55,9 @@ describe("checkRateLimit", () => {
   });
 
   test("fail-open when Redis throws", async () => {
-    globalThis.__mockRedis.eval.mockImplementationOnce(
-      async () => { throw new Error("connection refused"); },
-    );
+    globalThis.__mockRedis.eval.mockImplementationOnce(async () => {
+      throw new Error("connection refused");
+    });
 
     const result = await checkRateLimit({
       windowMs: 60_000,

@@ -6,11 +6,7 @@ moduleLoadCount++;
 
 type AuditMeta = Record<string, unknown>;
 
-export function auditEvent(
-  requestId: string,
-  event: string,
-  meta?: AuditMeta,
-) {
+export function auditEvent(requestId: string, event: string, meta?: AuditMeta) {
   console.log(
     JSON.stringify({
       audit: true,
