@@ -79,8 +79,19 @@
 
 **Status:** Implemented.
 
-**Decision:** Rate limiting is applied to the slug redirect (100 req/min per IP), not just admin routes.
+---
 
-**Context:** Protects against abuse of the redirect as a URL-based reflector. Rate limiting uses Redis sorted sets with an atomic Lua script.
+## ADR-008 — Services + Repositories (camadas de domínio)
 
-**Consequence:** Rate-limited requests receive a 404 (no indication of the reason).
+**Decision:** Adicionar camadas Service e Repository com injeção de dependência por constructor.
+
+**Context:** As queries Drizzle estavam misturadas com lógica de negócio nos routers, dificultando testes e refatorações. Introduzimos interfaces, classes com DI, e DomainError desacoplado do tRPC.
+
+**O que mudou:**
+- `src/lib/db/queries/` → `src/lib/repositories/` (LinkRepository, ClickRepository, AuditRepository)
+- `src/server/routers/` delegam lógica para `src/lib/services/`
+- `DomainError` (em `src/lib/errors/`) substitui `TRPCError` nos services
+- `errorMapper` middleware converte `DomainError` → `TRPCError` automaticamente
+- Response helpers `SuccessResponse`/`ErrorResponse` em `src/lib/response/`
+
+**Status:** Implementado.

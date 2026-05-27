@@ -248,7 +248,7 @@ All `fetch()` calls replaced with tRPC procedures. Single HTTP handler at `POST 
 ### Routers
 
 | Router | Procedure | Type | Input | CSRF |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | `auth` | `.login` | mutation | `{ password }` | no |
 | `links` | `.list` | query | `{ cursor?, limit? }` | no |
 | `links` | `.getById` | query | `{ id }` | no |
@@ -291,6 +291,12 @@ const page = await caller.links.list({ limit: 20 })
 | `adminProcedure` | `requireAdmin` → `rateLimit` (60 req/min) |
 | `adminMutationProcedure` | `requireAdmin` → `rateLimit` → `csrfProtection` |
 
+### Cache
+
+```
+POST /api/cache/wipe                           → { ok, deletedKeys }
+```
+
 ---
 
 ## Pagination Contract
@@ -322,7 +328,7 @@ api.links.list.useInfiniteQuery(
 Three rate limiters, all using Redis sorted sets + Lua script:
 
 | Endpoint | Window | Max requests | Key prefix |
-|---|---|---|---|
+|---|---|---|---|---|
 | `POST /api/auth/login` | 1 min | 5 | `ratelimit:login:{ip}` |
 | Admin API routes | 1 min | 60 | `ratelimit:admin-api:{ip}` |
 | `GET /[slug]` (redirect) | 1 min | 100 | `ratelimit:slug-resolve:{ip}` |
@@ -334,7 +340,6 @@ On Redis failure, all rate limiters fail open (allow).
 ## Logout
 
 Logout uses a Server Action (`src/lib/auth/actions.ts`), not an API route:
-
 ```ts
 "use server"
 export async function logoutAction() {
