@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import {
   type CreateLinkInput,
   createLinkSchema,
@@ -22,12 +23,14 @@ export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
 
   const createMutation = api.links.create.useMutation({
     onSuccess: () => {
+      toast.success("Link created successfully");
       reset();
       setOpen(false);
       onCreated();
     },
     onError: (err) => {
       setApiError(err.message);
+      toast.error(err.message);
     },
   });
 

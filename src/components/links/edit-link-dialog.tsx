@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import {
   type UpdateLinkInput,
   updateLinkSchema,
@@ -29,10 +30,12 @@ export function EditLinkDialog({
 
   const updateMutation = api.links.update.useMutation({
     onSuccess: () => {
+      toast.success("Link updated successfully");
       onUpdated();
     },
     onError: (err) => {
       setApiError(err.message);
+      toast.error(err.message);
     },
   });
 

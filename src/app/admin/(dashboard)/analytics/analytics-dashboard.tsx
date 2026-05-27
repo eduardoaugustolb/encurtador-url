@@ -3,14 +3,18 @@
 import { useRef, useState } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
+import { toast } from "sonner";
 import { api } from "@/lib/trpc/react";
 import type { DateRangePreset } from "@/components/analytics/date-range-filter";
 import { DateRangeFilter } from "@/components/analytics/date-range-filter";
 import { StatsCard } from "@/components/analytics/stats-card";
+import { StatsCardSkeleton } from "@/components/analytics/stats-card-skeleton";
 import { Button } from "@/components/ui/button";
 import { ClicksOverTimeChart } from "@/components/charts/clicks-over-time";
 import { TopLinksChart } from "@/components/charts/top-links";
 import { TopReferrersChart } from "@/components/charts/top-referrers";
+import { ChartSkeleton } from "@/components/charts/chart-skeleton";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 gsap.registerPlugin(useGSAP);
 
@@ -109,6 +113,32 @@ export function AnalyticsDashboard({
   const topLinksData = topLinksQuery.data ?? initialTopLinksData;
   const referrersData = referrersQuery.data ?? initialReferrersData;
 
+  const isRefreshing =
+    summaryQuery.isFetching &&
+    !summaryQuery.isLoading &&
+    summaryQuery.data !== undefined;
+
+  const cacheWipeMutation = api.cache.wipe.useMutation({
+    onSuccess: () => {
+      toast.success("Cache cleared successfully");
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  async function handleCacheWipe() {
+    try {
+      await cacheWipeMutation.mutateAsync();
+      summaryQuery.refetch();
+      clicksQuery.refetch();
+      topLinksQuery.refetch();
+      referrersQuery.refetch();
+    } catch {
+      // error handled by mutation onError
+    }
+  }
+
   function handlePresetChange(p: DateRangePreset) {
     setPreset(p);
     setCustomFrom("");
@@ -122,68 +152,88 @@ export function AnalyticsDashboard({
   }
 
   return (
-    <div ref={container} className="space-y-6">
-      <div ref={headerRef} className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-balance">Analytics</h1>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              summaryQuery.refetch();
-              clicksQuery.refetch();
-              topLinksQuery.refetch();
-              referrersQuery.refetch();
-            }}
-          >
-            Refresh
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={async () => {
-              await api.cache.wipe.useMutation().mutateAsync();
-              summaryQuery.refetch();
-              clicksQuery.refetch();
-              topLinksQuery.refetch();
-              referrersQuery.refetch();
-            }}
-          >
-            Limpar Cache
-          </Button>
+    <ErrorBoundary>
+      <div ref={container} className="space-y-6">
+        <div ref={headerRef} className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-balance">Analytics</h1>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isRefreshing}
+              onClick={() => {
+                summaryQuery.refetch();
+                clicksQuery.refetch();
+                topLinksQuery.refetch();
+                referrersQuery.refetch();
+              }}
+            >
+              {isRefreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={cacheWipeMutation.isPending}
+              onClick={handleCacheWipe}
+            >
+              {cacheWipeMutation.isPending ? "Clearing..." : "Clear cache"}
+            </Button>
+          </div>
         </div>
+
+        <div ref={filterRef}>
+          <DateRangeFilter
+            value={preset}
+            onChange={handlePresetChange}
+            customFrom={customFrom}
+            customTo={customTo}
+            onCustomRange={handleCustomRange}
+          />
+        </div>
+
+        <div ref={statsRef} className="grid gap-4 sm:grid-cols-3">
+          {summaryQuery.isLoading && !summaryQuery.data ? (
+            <>
+              <StatsCardSkeleton />
+              <StatsCardSkeleton />
+              <StatsCardSkeleton />
+            </>
+          ) : (
+            <>
+              <StatsCard label="Total clicks" value={summaryData.totalClicks} />
+              <StatsCard label="Peak day" value={summaryData.peakDay ?? "N/A"} />
+              <StatsCard label="Peak day clicks" value={summaryData.peakDayClicks} />
+            </>
+          )}
+        </div>
+
+        <section ref={clicksChartRef} className="rounded-lg border shadow-sm p-4">
+          <h2 className="mb-4 font-medium text-balance">Clicks over time</h2>
+          {clicksQuery.isLoading && !clicksQuery.data ? (
+            <ChartSkeleton />
+          ) : (
+            <ClicksOverTimeChart data={clicksData} />
+          )}
+        </section>
+
+        <section ref={topLinksChartRef} className="rounded-lg border shadow-sm p-4">
+          <h2 className="mb-4 font-medium text-balance">Top links</h2>
+          {topLinksQuery.isLoading && !topLinksQuery.data ? (
+            <ChartSkeleton />
+          ) : (
+            <TopLinksChart data={topLinksData} />
+          )}
+        </section>
+
+        <section ref={referrersChartRef} className="rounded-lg border shadow-sm p-4">
+          <h2 className="mb-4 font-medium text-balance">Top referrers</h2>
+          {referrersQuery.isLoading && !referrersQuery.data ? (
+            <ChartSkeleton />
+          ) : (
+            <TopReferrersChart data={referrersData} />
+          )}
+        </section>
       </div>
-
-      <div ref={filterRef}>
-        <DateRangeFilter
-          value={preset}
-          onChange={handlePresetChange}
-          customFrom={customFrom}
-          customTo={customTo}
-          onCustomRange={handleCustomRange}
-        />
-      </div>
-
-      <div ref={statsRef} className="grid gap-4 sm:grid-cols-3">
-        <StatsCard label="Total clicks" value={summaryData.totalClicks} />
-        <StatsCard label="Peak day" value={summaryData.peakDay ?? "N/A"} />
-        <StatsCard label="Peak day clicks" value={summaryData.peakDayClicks} />
-      </div>
-
-      <section ref={clicksChartRef} className="rounded-lg border shadow-sm p-4">
-        <h2 className="mb-4 font-medium text-balance">Clicks over time</h2>
-        <ClicksOverTimeChart data={clicksData} />
-      </section>
-
-      <section ref={topLinksChartRef} className="rounded-lg border shadow-sm p-4">
-        <h2 className="mb-4 font-medium text-balance">Top links</h2>
-        <TopLinksChart data={topLinksData} />
-      </section>
-
-      <section ref={referrersChartRef} className="rounded-lg border shadow-sm p-4">
-        <h2 className="mb-4 font-medium text-balance">Top referrers</h2>
-        <TopReferrersChart data={referrersData} />
-      </section>
-    </div>
+    </ErrorBoundary>
   );
 }

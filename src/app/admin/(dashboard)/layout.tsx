@@ -7,6 +7,7 @@ import gsap from "gsap";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/lib/auth/actions";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 gsap.registerPlugin(useGSAP);
 
@@ -71,7 +72,7 @@ export default function DashboardLayout({
         </nav>
       </header>
       <main ref={mainRef} className="mx-auto max-w-5xl px-4 py-8">
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </div>
   );
