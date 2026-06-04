@@ -1,8 +1,9 @@
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { OWNER, SEO } from "@/lib/constants";
 
-export const alt = "Bit Link - Encurtador de URLs com Analytics";
+export const alt = SEO.description;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -26,7 +27,25 @@ export default async function Image() {
         fontFamily: "system-ui",
       }}
     >
-      <img src={logoSrc} width={120} height={160} />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 120,
+          height: 120,
+          borderRadius: "100%",
+          background: "linear-gradient(135deg, #52525b, #3f3f46)",
+          fontSize: 48,
+          fontWeight: 700,
+          color: "#fafafa",
+        }}
+      >
+        {OWNER.name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")}
+      </div>
       <div
         style={{
           marginTop: 32,
@@ -36,7 +55,7 @@ export default async function Image() {
           letterSpacing: "-0.02em",
         }}
       >
-        Bit Link
+        {OWNER.name}
       </div>
       <div
         style={{
@@ -45,7 +64,7 @@ export default async function Image() {
           color: "#a1a1aa",
         }}
       >
-        Encurte, compartilhe e monitore seus links
+        {OWNER.bio}
       </div>
     </div>,
     { ...size },

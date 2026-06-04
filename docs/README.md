@@ -1,6 +1,6 @@
-# Bit Link — Documentação do Projeto
+# Documentação do Projeto
 
-**Bit Link** é um encurtador de URL com analytics, feito com Next.js 16, PostgreSQL, Redis, e Drizzle ORM.
+**Bit Link** é um encurtador de URL com analytics + Link Three (página de links do proprietário), feito com Next.js 16, PostgreSQL, Redis, e Drizzle ORM.
 
 ## Índice
 

@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { OWNER, SEO, SITE } from "@/lib/constants";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,18 +21,14 @@ const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
 });
 
-const title = "Bit Link";
-const description =
-  "Encurte, compartilhe e monitore seus links com análises em tempo real. Bit Link é o encurtador de URLs com dashboard de analytics.";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://encurta.dev";
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Bit Link",
+  name: OWNER.name,
   url: APP_URL,
-  description:
-    "Encurte, compartilhe e monitore seus links com análises em tempo real.",
+  description: SEO.description,
 };
 
 export const viewport: Viewport = {
@@ -40,32 +37,32 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: title,
-    template: `%s | ${title}`,
+    default: SEO.defaultTitle,
+    template: SEO.titleTemplate,
   },
-  description,
+  description: SEO.description,
   metadataBase: new URL(APP_URL),
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: {
-      default: title,
-      template: `%s | ${title}`,
+      default: SEO.defaultTitle,
+      template: SEO.titleTemplate,
     },
-    description,
+    description: SEO.description,
     url: "/",
-    siteName: title,
+    siteName: SEO.defaultTitle,
     locale: "pt_BR",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: {
-      default: title,
-      template: `%s | ${title}`,
+      default: SEO.defaultTitle,
+      template: SEO.titleTemplate,
     },
-    description,
+    description: SEO.description,
   },
   icons: {
     icon: "/icon.svg",

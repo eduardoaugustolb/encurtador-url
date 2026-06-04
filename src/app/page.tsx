@@ -1,50 +1,55 @@
-import type { Metadata } from "next";
 import Link from "next/link";
+import { OWNER, SITE } from "@/lib/constants";
+import { LinkThreeLinks } from "@/components/link-three/links";
 
-export const metadata: Metadata = {
-  title: "Encurtador de URLs",
-  description:
-    "Encurte links longos, compartilhe de forma inteligente e acompanhe cada clique com análises em tempo real. Bit Link — o encurtador de URLs com dashboard completo.",
-  openGraph: {
-    title: "Encurtador de URLs",
-    description:
-      "Encurte links longos, compartilhe de forma inteligente e acompanhe cada clique com análises em tempo real.",
-  },
-  twitter: {
-    title: "Encurtador de URLs",
-    description:
-      "Encurte links longos, compartilhe de forma inteligente e acompanhe cada clique com análises em tempo real.",
-  },
-};
+export default function HomePage() {
+  const initials = OWNER.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase();
 
-export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-lg text-4xl font-bold leading-tight tracking-tight text-black dark:text-zinc-50">
-            Encurte seus links com análises em tempo real
+    <main className="relative flex min-h-dvh flex-col items-center justify-center bg-black px-6">
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -left-32 -top-32 h-80 w-80 rounded-full bg-zinc-800/20 blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 h-80 w-80 rounded-full bg-zinc-800/20 blur-3xl" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex w-full max-w-sm flex-col items-center gap-8 py-16">
+        {/* Avatar */}
+        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 text-2xl font-bold tracking-tight text-white ring-2 ring-white/10">
+          {initials}
+        </div>
+
+        {/* Name + Handle */}
+        <div className="flex flex-col items-center gap-1 text-center">
+          <h1 className="text-xl font-bold tracking-tight text-white">
+            {OWNER.name}
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Crie links curtos e rastreáveis em segundos. Acompanhe cliques,
-            referências e tendências com um dashboard completo de analytics.
+          <p className="text-sm text-zinc-400">{OWNER.handle}</p>
+        </div>
+
+        {/* Bio */}
+        {OWNER.bio && (
+          <p className="max-w-xs text-center text-sm leading-relaxed text-zinc-500">
+            {OWNER.bio}
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+        )}
+
+        {/* Links */}
+        <LinkThreeLinks links={OWNER.links} />
+
+        {/* Footer */}
+        <div className="flex flex-col items-center gap-2">
           <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-auto"
             href="/admin/login"
+            className="text-xs text-zinc-700 transition-colors hover:text-zinc-500"
           >
-            Acessar painel
-          </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-6 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-auto"
-            href="/admin/login"
-          >
-            Criar link curto
+            {SITE.name}
           </Link>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }

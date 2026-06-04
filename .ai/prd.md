@@ -2,7 +2,9 @@
 
 ## Overview
 
-Bit Link is a self-hosted URL shortener with a real-time analytics dashboard. It is designed for a single admin user who manages all links and monitors traffic. The primary design constraint is speed: redirect latency must be imperceptible to end users, and the dashboard must feel instant.
+Bit Link is a self-hosted URL shortener with a real-time analytics dashboard **and a Link Three page** (link-in-bio for the owner). It is designed for a single admin user who manages all links and monitors traffic. The primary design constraint is speed: redirect latency must be imperceptible to end users, and the dashboard must feel instant.
+
+The home route (`/`) serves as a **Link Three** page for the owner, configured via `src/lib/constants.ts`. SEO always favors the owner's name—never the BitLink wrapper name. This makes it easy for anyone to clone, edit constants, and deploy their own instance.
 
 ## Goals
 
@@ -79,7 +81,16 @@ Charts rendered with Recharts. All charts respond to a shared date range filter 
 
 Export: CSV download of raw clicks for the selected period and filters (max 365 day range, 100k rows).
 
-### 5. Authentication
+### 5. Link Three — Home Page
+
+- Rota `/` exibe uma página link-in-bio do proprietário
+- Configurada via `src/lib/constants.ts` — OWNER (nome, bio, handle, links), SITE (wrapper), SEO
+- Avatar: iniciais do nome em gradiente (fallback) ou imagem configurada
+- Links sociais renderizados com ícones Phosphor
+- Rodapé discreto com nome do wrapper (BitLink)
+- SEO sempre centrado no proprietário, nunca no BitLink
+
+### 6. Authentication
 
 - Login form at `/admin/login` — styled with GSAP entrance animations, shadcn/ui components
 - Password compared against `ADMIN_PASSWORD` env var via `timingSafeEqual`

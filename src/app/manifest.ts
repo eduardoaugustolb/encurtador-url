@@ -1,11 +1,11 @@
 import type { MetadataRoute } from "next";
+import { OWNER, SEO } from "@/lib/constants";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Bit Link",
-    short_name: "Bit Link",
-    description:
-      "Encurte, compartilhe e monitore seus links com análises em tempo real.",
+    name: SEO.defaultTitle,
+    short_name: SEO.defaultTitle,
+    description: SEO.description,
     start_url: "/",
     display: "standalone",
     background_color: "#09090b",
