@@ -1,6 +1,4 @@
 import { ImageResponse } from "next/og";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { OWNER, SEO } from "@/lib/constants";
 
 export const alt = SEO.description;
@@ -8,12 +6,6 @@ export const size = { width: 1200, height: 600 };
 export const contentType = "image/png";
 
 export default async function Image() {
-  const logoData = await readFile(
-    join(process.cwd(), "public/logo-white.svg"),
-    "utf-8",
-  );
-  const logoSrc = `data:image/svg+xml;base64,${Buffer.from(logoData).toString("base64")}`;
-
   return new ImageResponse(
     <div
       style={{
@@ -24,46 +16,68 @@ export default async function Image() {
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "#09090b",
+        fontFamily: "system-ui",
       }}
     >
       <div
         style={{
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
-          justifyContent: "center",
-          width: 120,
-          height: 120,
-          borderRadius: "100%",
-          background: "linear-gradient(135deg, #52525b, #3f3f46)",
-          fontSize: 48,
-          fontWeight: 700,
-          color: "#fafafa",
+          gap: "16px",
         }}
       >
-        {OWNER.name
-          .split(" ")
-          .map((n) => n[0])
-          .join("")}
-      </div>
-      <div
-        style={{
-          marginTop: 32,
-          fontSize: 64,
-          fontWeight: 700,
-          color: "#fafafa",
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {OWNER.name}
-      </div>
-      <div
-        style={{
-          marginTop: 12,
-          fontSize: 28,
-          color: "#a1a1aa",
-        }}
-      >
-        {OWNER.bio}
+        <img
+          src={OWNER.avatar || undefined}
+          width={120}
+          height={120}
+          style={{
+            borderRadius: "100%",
+            objectFit: "cover",
+          }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "4px",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 28,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              color: "#fafafa",
+            }}
+          >
+            {OWNER.name}
+          </span>
+          <span
+            style={{
+              fontSize: 18,
+              color: "#a1a1aa",
+            }}
+          >
+            {OWNER.handle}
+          </span>
+        </div>
+
+        {OWNER.bio && (
+          <span
+            style={{
+              maxWidth: 420,
+              textAlign: "center",
+              fontSize: 20,
+              lineHeight: 1.6,
+              color: "#71717a",
+            }}
+          >
+            {OWNER.bio}
+          </span>
+        )}
       </div>
     </div>,
     { ...size },
