@@ -79,7 +79,6 @@ src/
 │       └── route.ts        # Único HTTP handler tRPC
 ├── components/
 │   ├── link-three/          # Link Three — página inicial do proprietário
-│   │   └── links.tsx        # Renderiza lista de links com ícones Phosphor
 │   ├── ui/                  # shadcn primitives
 │   ├── trpc.ts             # Context, middleware, procedures builders (incl. errorMapper)
 │   └── routers/

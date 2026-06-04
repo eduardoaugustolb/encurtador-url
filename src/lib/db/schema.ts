@@ -2,6 +2,7 @@ import {
   boolean,
   char,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -14,6 +15,9 @@ export const links = pgTable("links", {
   destinationUrl: text("destination_url").notNull(),
   title: text("title"),
   isActive: boolean("is_active").notNull().default(true),
+  showOnHome: boolean("show_on_home").notNull().default(false),
+  icon: text("icon"),
+  position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

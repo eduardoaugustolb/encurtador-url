@@ -84,9 +84,11 @@ Export: CSV download of raw clicks for the selected period and filters (max 365 
 ### 5. Link Three — Home Page
 
 - Rota `/` exibe uma página link-in-bio do proprietário
-- Configurada via `src/lib/constants.ts` — OWNER (nome, bio, handle, links), SITE (wrapper), SEO
+- Configuração do dono via `src/lib/constants.ts` — OWNER (nome, bio, handle), SITE (wrapper), SEO
+- **Links gerenciados pelo dashboard admin** — campo `show_on_home` na tabela `links`
+- Ícone por link: campo `icon` na tabela `links`, seletor com busca de 1500+ ícones Phosphor
+- Todo link exibido na home é um link encurtado pelo sistema (passa pelo redirect engine, gera analytics)
 - Avatar: iniciais do nome em gradiente (fallback) ou imagem configurada
-- Links sociais renderizados com ícones Phosphor
 - Rodapé discreto com nome do wrapper (BitLink)
 - SEO sempre centrado no proprietário, nunca no BitLink
 

@@ -58,7 +58,9 @@ src/
 │   └── error.tsx
 ├── components/
 │   ├── link-three/                # Link Three page — owner's link-in-bio
-│   │   └── links.tsx              # Renders links with Phosphor icons
+│   │   ├── links.tsx              # Renders links with Phosphor icons
+│   │   ├── icon-picker.tsx        # Searchable Popover icon selector (all Phosphor)
+│   │   └── dynamic-icon.tsx       # Lazy-loads any Phosphor icon by name
 │   ├── ui/                        # shadcn primitives — never edit directly
 │   ├── charts/
 │   │   ├── clicks-over-time.tsx

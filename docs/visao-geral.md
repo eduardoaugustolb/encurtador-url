@@ -133,26 +133,60 @@ Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada c
 
 ### 14. Audit Logging
 
-Toda operação de mutação (create/update/delete link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
+Toda operação de mutação (create/update/delete/reorder link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. O reorder também audita os itens reordenados (ids + novas posições) com o IP do admin via `ctx.ip`. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
 
 ### 15. Link Three — Home Page do Proprietário
 
-A rota `/` (home) funciona como uma página **Link Three** (link-in-bio) do proprietário,
-configurada via `src/lib/constants.ts`. Em vez de promover o BitLink, a home exibe:
+A rota `/` (home) funciona como uma página **Link Three** (link-in-bio) do proprietário.
+Em vez de promover o BitLink, a home exibe:
 
 - Iniciais do dono (ou avatar, se configurado)
 - Nome e handle (ex: `@eduardoaugusto`)
 - Biografia
-- Lista de links (site, GitHub, LinkedIn, etc.)
+- Lista de links gerenciada pelo dashboard admin
 - Rodapé discreto com o nome do wrapper (BitLink)
 
 **SEO:** O motor de busca enxerga o nome do proprietário como título principal.
 O BitLink aparece apenas como informação secundária no rodapé.
 
-**Para personalizar:** Edite `src/lib/constants.ts` — troque `OWNER.name`,
-`OWNER.bio`, `OWNER.handle` e a lista em `OWNER.links`.
+**Gerenciamento via Dashboard:**
+- Crie links normalmente no admin (`/admin/links`)
+- Ative "Show on home page (Link Three)" no edit de cada link
+- Escolha um ícone Phosphor para cada link via o seletor com busca
+- Os links aparecem na home automaticamente
 
-### 16. Services + Repositories (Camadas de Domínio)
+**Ícones:** Mais de 1500 ícones Phosphor disponíveis, todos buscáveis
+pelo seletor (Popover + input de busca). O nome do ícone é armazenado
+no banco (ex: `GithubLogoIcon`, `GlobeHemisphereWestIcon`).
+
+**Para personalizar dono:** Edite `src/lib/constants.ts` — troque `OWNER.name`,
+`OWNER.bio` e `OWNER.handle`.
+
+### 16. Optimistic UI — Padrão do Projeto
+
+Toda mutação que afeta a ordem ou visibilidade de itens no dashboard DEVE ser
+otimista: o frontend reflete a mudança **antes** da resposta do servidor, e
+reverte em caso de erro.
+
+**Padrão atual (ex: reorder de links):**
+
+1. O estado local `orderedLinks` é sincronizado com o cache do tRPC via
+   `useEffect`
+2. Ao arrastar um link (`handleDragEnd`):
+   - `setOrderedLinks()` atualiza o estado **imediatamente** (UI otimista)
+   - `reorderMutation.mutate()` dispara a requisição em paralelo
+3. `onError` da mutation: restaura `orderedLinks` com dados frescos do cache
+   e mostra toast de erro
+4. `onSettled`: invalida a query (`refetch()`) para sincronizar estado final
+
+**Não use** `onMutate` com `setInfiniteData` para esse padrão. Prefira um estado
+local espelho (`orderedLinks`) sincronizado com o cache. É mais legível, evita
+complexidade de query keys, e cobre bem os casos de rollback.
+
+**Próximas mutações que devem seguir o padrão:**
+- Create/delete/mark-active — idealmente também otimistas com rollback
+
+### 17. Services + Repositories (Camadas de Domínio)
 
 A lógica de negócio foi organizada em **services** e **repositories** para facilitar testes e refatorações:
 

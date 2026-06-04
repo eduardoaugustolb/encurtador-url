@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { QueryProvider } from "@/components/query-provider";
 import { OWNER, SEO, SITE } from "@/lib/constants";
 
 const geistSans = Geist({
@@ -86,7 +87,7 @@ export default function RootLayout({
           forcedTheme="dark"
           disableTransitionOnChange
         >
-          {children}
+          <QueryProvider>{children}</QueryProvider>
         </ThemeProvider>
         <script
           type="application/ld+json"

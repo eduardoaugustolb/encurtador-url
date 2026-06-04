@@ -7,52 +7,28 @@
 // ⚠️ O SEO SEMPRE favorece o OWNER, nunca o nome do wrapper.
 //    O wrapper (BitLink) é apenas o motor por trás — clones
 //    devem trocar apenas os dados abaixo.
+//
+// Os links exibidos na home são gerenciados pelo dashboard
+// admin. Crie links com "Show on home page" ativado e
+// escolha um ícone para cada um.
 // ────────────────────────────────────────────────────────────
 
-export interface LinkThreeLink {
-  label: string
-  url: string
-  icon:
-    | "globe"
-    | "github"
-    | "linkedin"
-    | "twitter"
-    | "youtube"
-    | "instagram"
-    | "tiktok"
-    | "facebook"
-    | "email"
-    | "whatsapp"
-    | "telegram"
-    | "discord"
-    | "figma"
-    | "dribbble"
-    | "behance"
-    | "medium"
-    | "devto"
-    | "hashnode"
-    | "producthunt"
-    | "link"
-  description?: string
-}
-
 export interface OwnerConfig {
-  name: string
-  handle: string
-  bio: string
-  avatar: string | null
-  links: LinkThreeLink[]
+  name: string;
+  handle: string;
+  bio: string;
+  avatar: string | null;
 }
 
 export interface SiteConfig {
-  name: string
-  description: string
+  name: string;
+  description: string;
 }
 
 export interface SEOConfig {
-  defaultTitle: string
-  titleTemplate: string
-  description: string
+  defaultTitle: string;
+  titleTemplate: string;
+  description: string;
 }
 
 // ─── DONO ────────────────────────────────────────────────────
@@ -62,32 +38,8 @@ export const OWNER: OwnerConfig = {
   name: "Eduardo Augusto",
   handle: "@eduardoaugusto",
   bio: "Desenvolvedor full-stack criando soluções web modernas.",
-  avatar: null,
-  links: [
-    {
-      label: "Meu Site",
-      url: "https://eduardoaugusto.dev",
-      icon: "globe",
-      description: "Portfólio e blog",
-    },
-    {
-      label: "GitHub",
-      url: "https://github.com/eduardoaugusto",
-      icon: "github",
-      description: "Código aberto e projetos",
-    },
-    {
-      label: "LinkedIn",
-      url: "https://linkedin.com/in/eduardoaugusto",
-      icon: "linkedin",
-    },
-    {
-      label: "Twitter / X",
-      url: "https://x.com/eduardoaugusto",
-      icon: "twitter",
-    },
-  ],
-}
+  avatar: "https://avatars.githubusercontent.com/u/151971344?v=4",
+};
 
 // ─── WRAPPER ─────────────────────────────────────────────────
 // Nome do motor/encurtador. Aparece apenas no admin e no
@@ -95,7 +47,7 @@ export const OWNER: OwnerConfig = {
 export const SITE: SiteConfig = {
   name: "BitLink",
   description: "Encurtador de URLs com analytics",
-}
+};
 
 // ─── SEO ─────────────────────────────────────────────────────
 // Derivado automaticamente do OWNER. O template garante que
@@ -104,4 +56,4 @@ export const SEO: SEOConfig = {
   defaultTitle: OWNER.name,
   titleTemplate: `%s | ${OWNER.name}`,
   description: OWNER.bio,
-}
+};
