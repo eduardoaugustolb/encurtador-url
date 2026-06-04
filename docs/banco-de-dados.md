@@ -12,6 +12,9 @@ erDiagram
         text destination_url "URL alvo"
         text title "rótulo opcional"
         boolean is_active "default true"
+        boolean show_on_home "exibir na home (Link Three)"
+        text icon "ícone Phosphor (ex: GithubLogoIcon)"
+        integer position "default 0 — ordem (Link Three)"
         timestamp created_at
         timestamp updated_at
     }

@@ -49,14 +49,18 @@ src/
 │   │       └── [trpc]/
 │   │           └── route.ts       # Single tRPC HTTP handler (GET + POST)
 │   ├── not-found.tsx              # 404 page with ASCII art
-│   ├── layout.tsx                 # Root layout with fonts, theme, JSON-LD, analytics
-│   ├── page.tsx                   # Home page
+│   ├── layout.tsx                 # Root layout with fonts, theme, JSON-LD, analytics (SEO centrado no OWNER)
+│   ├── page.tsx                   # Home page — Link Three do proprietário (via constants.ts)
 │   ├── robots.ts
 │   ├── sitemap.ts
 │   ├── manifest.ts
 │   ├── icon.tsx / apple-icon.tsx / opengraph-image.tsx / twitter-image.tsx
 │   └── error.tsx
 ├── components/
+│   ├── link-three/                # Link Three page — owner's link-in-bio
+│   │   ├── links.tsx              # Renders links with Phosphor icons
+│   │   ├── icon-picker.tsx        # Searchable Popover icon selector (all Phosphor)
+│   │   └── dynamic-icon.tsx       # Lazy-loads any Phosphor icon by name
 │   ├── ui/                        # shadcn primitives — never edit directly
 │   ├── charts/
 │   │   ├── clicks-over-time.tsx
@@ -75,6 +79,7 @@ src/
 │   ├── logo.tsx
 │   └── ascii-text.tsx
 ├── lib/
+│   ├── constants.ts               # Config central: OWNER, SITE, SEO — edite para personalizar
 │   ├── errors/                    # DomainError, NotFoundError, BadRequestError...
 │   │   └── index.ts
 │   ├── response/                  # SuccessResponse, ErrorResponse helpers

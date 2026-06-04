@@ -12,6 +12,7 @@ import { api } from "@/lib/trpc/react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { IconPicker } from "@/components/link-three/icon-picker";
 
 interface CreateLinkFormProps {
   onCreated: () => void;
@@ -20,11 +21,13 @@ interface CreateLinkFormProps {
 export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
   const [open, setOpen] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
 
   const createMutation = api.links.create.useMutation({
     onSuccess: () => {
       toast.success("Link created successfully");
       reset();
+      setSelectedIcon(null);
       setOpen(false);
       onCreated();
     },
@@ -45,7 +48,7 @@ export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
 
   async function onSubmit(data: CreateLinkInput) {
     setApiError(null);
-    createMutation.mutate(data);
+    createMutation.mutate({ ...data, icon: selectedIcon ?? undefined });
   }
 
   if (!open) {
@@ -92,6 +95,11 @@ export function CreateLinkForm({ onCreated }: CreateLinkFormProps) {
         {errors.slug && (
           <p className="text-xs text-destructive">{errors.slug.message}</p>
         )}
+      </div>
+
+      <div className="space-y-1">
+        <Label>Icon (optional)</Label>
+        <IconPicker value={selectedIcon} onChange={setSelectedIcon} />
       </div>
 
       {apiError && <p className="text-xs text-destructive">{apiError}</p>}

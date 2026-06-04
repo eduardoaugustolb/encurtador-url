@@ -98,26 +98,34 @@ A página de links admin usa **React Query** (`useInfiniteLinks`) com `Intersect
 
 ### 12. SEO & Metadados
 
-Todas as páginas possuem metadados únicos (title, description, Open Graph, Twitter Card) via `metadata` export do Next.js App Router:
+O SEO do projeto é **centrado no proprietário**, não no wrapper BitLink. Títulos, descrições e
+imagens Open Graph/Twitter são derivados do arquivo `src/lib/constants.ts`, que contém
+os dados do dono (`OWNER`), do wrapper (`SITE`) e as configs de SEO (`SEO`).
+
+O template de título é `%s | ${OWNER.name}`, garantindo que toda página filho exiba
+o nome do proprietário como autoridade:
 
 | Página | Título | Descrição |
 |---|---|---|
-| Home | Encurtador de URLs \| Bit Link | Encurte, compartilhe e monitore seus links |
-| 404 | Página não encontrada \| Bit Link | Mensagem amigável em português |
-| Admin | Admin \| Bit Link | Bloqueado para robôs (`noindex`) |
-| Links | Links \| Bit Link | Gerenciamento de links |
-| Analytics | Analytics \| Bit Link | Dashboard de métricas |
+| Home (Link Three) | Nome do Dono | Bio do dono |
+| 404 | Página não encontrada \| Nome do Dono | Mensagem amigável em português |
+| Admin | Admin \| Nome do Dono | Bloqueado para robôs (`noindex`) |
+
+**Princípio:** O BitLink é apenas o motor tecnológico. Quem clonar este repositório
+deve editar apenas `src/lib/constants.ts` com seus próprios dados — o SEO refletirá
+o novo dono automaticamente.
 
 Recursos de SEO implementados:
 - **`robots.txt`**: Permite `/`, bloqueia `/admin/`
 - **`sitemap.xml`**: Gerado dinamicamente via `sitemap.ts`
-- **`manifest.webmanifest`**: PWA manifest com ícones e tema escuro
+- **`manifest.webmanifest`**: PWA manifest com nome do dono e tema escuro
 - **Ícones**: Logo SVG como `icon.tsx`, `apple-icon.tsx` (180x180)
-- **Open Graph + Twitter Image**: Gerados via `ImageResponse` com logo e gradiente escuro
+- **Open Graph + Twitter Image**: Gerados via `ImageResponse` com iniciais do dono
 - **JSON-LD**: Structured data `WebSite` no `<head>` do root layout
 - **`theme-color`**: `#09090b` via `viewport` export
 - **`lang="pt"`**: HTML lang corrigido para português
-- **Home page**: Conteúdo real substituindo boilerplate Create Next App
+- **Home page**: Link Three com links configuráveis do proprietário
+- **`src/lib/constants.ts`**: Arquivo único de configuração — edite para personalizar
 
 ### 13. OpenTelemetry Tracing
 
@@ -125,9 +133,60 @@ Cada operação crítica (resolve slug, rate limit, DB query) é instrumentada c
 
 ### 14. Audit Logging
 
-Toda operação de mutação (create/update/delete link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
+Toda operação de mutação (create/update/delete/reorder link) registra um evento na tabela `audit_log` com ação, entidade, payload before/after e IP de origem. O reorder também audita os itens reordenados (ids + novas posições) com o IP do admin via `ctx.ip`. Também há um sistema de audit em tempo de requisição via `createAudit()` que loga eventos estruturados no console.
 
-### 15. Services + Repositories (Camadas de Domínio)
+### 15. Link Three — Home Page do Proprietário
+
+A rota `/` (home) funciona como uma página **Link Three** (link-in-bio) do proprietário.
+Em vez de promover o BitLink, a home exibe:
+
+- Iniciais do dono (ou avatar, se configurado)
+- Nome e handle (ex: `@eduardoaugusto`)
+- Biografia
+- Lista de links gerenciada pelo dashboard admin
+- Rodapé discreto com o nome do wrapper (BitLink)
+
+**SEO:** O motor de busca enxerga o nome do proprietário como título principal.
+O BitLink aparece apenas como informação secundária no rodapé.
+
+**Gerenciamento via Dashboard:**
+- Crie links normalmente no admin (`/admin/links`)
+- Ative "Show on home page (Link Three)" no edit de cada link
+- Escolha um ícone Phosphor para cada link via o seletor com busca
+- Os links aparecem na home automaticamente
+
+**Ícones:** Mais de 1500 ícones Phosphor disponíveis, todos buscáveis
+pelo seletor (Popover + input de busca). O nome do ícone é armazenado
+no banco (ex: `GithubLogoIcon`, `GlobeHemisphereWestIcon`).
+
+**Para personalizar dono:** Edite `src/lib/constants.ts` — troque `OWNER.name`,
+`OWNER.bio` e `OWNER.handle`.
+
+### 16. Optimistic UI — Padrão do Projeto
+
+Toda mutação que afeta a ordem ou visibilidade de itens no dashboard DEVE ser
+otimista: o frontend reflete a mudança **antes** da resposta do servidor, e
+reverte em caso de erro.
+
+**Padrão atual (ex: reorder de links):**
+
+1. O estado local `orderedLinks` é sincronizado com o cache do tRPC via
+   `useEffect`
+2. Ao arrastar um link (`handleDragEnd`):
+   - `setOrderedLinks()` atualiza o estado **imediatamente** (UI otimista)
+   - `reorderMutation.mutate()` dispara a requisição em paralelo
+3. `onError` da mutation: restaura `orderedLinks` com dados frescos do cache
+   e mostra toast de erro
+4. `onSettled`: invalida a query (`refetch()`) para sincronizar estado final
+
+**Não use** `onMutate` com `setInfiniteData` para esse padrão. Prefira um estado
+local espelho (`orderedLinks`) sincronizado com o cache. É mais legível, evita
+complexidade de query keys, e cobre bem os casos de rollback.
+
+**Próximas mutações que devem seguir o padrão:**
+- Create/delete/mark-active — idealmente também otimistas com rollback
+
+### 17. Services + Repositories (Camadas de Domínio)
 
 A lógica de negócio foi organizada em **services** e **repositories** para facilitar testes e refatorações:
 

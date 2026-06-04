@@ -77,7 +77,9 @@ src/
 │   │   └── page.tsx        # redirect → /admin/links
 │   └── api/trpc/[trpc]/
 │       └── route.ts        # Único HTTP handler tRPC
-├── server/                 # tRPC
+├── components/
+│   ├── link-three/          # Link Three — página inicial do proprietário
+│   ├── ui/                  # shadcn primitives
 │   ├── trpc.ts             # Context, middleware, procedures builders (incl. errorMapper)
 │   └── routers/
 │       ├── _app.ts         # appRouter
@@ -91,6 +93,7 @@ src/
 │   ├── analytics/
 │   └── charts/             # Recharts wrappers
 ├── lib/
+│   ├── constants.ts        # Config central: OWNER, SITE, SEO — edite para personalizar
 │   ├── errors/             # DomainError, NotFoundError, BadRequestError...
 │   ├── response/           # SuccessResponse, ErrorResponse helpers
 │   ├── services/           # LinkService, AnalyticsService, AuthService, CacheService, RedirectService
@@ -156,10 +159,12 @@ sequenceDiagram
 
 | Componente | Arquivo | Papel |
 |---|---|---|
+| Home (Link Three) | `src/app/page.tsx` | Página inicial — link-in-bio do proprietário |
 | Redirect Engine | `src/app/[slug]/route.ts` | Resolve slug, rate limit, redireciona (via RedirectService) |
 | Auth Guard | `src/proxy.ts` | Protege rotas `/admin/*`, verifica JWT |
 | tRPC Handler | `src/app/api/trpc/[trpc]/route.ts` | HTTP handler único para todas as APIs |
 | tRPC Middleware | `src/server/trpc.ts` | `adminProcedure`, `adminMutationProcedure`, `errorMapper` |
+| Config | `src/lib/constants.ts` | OWNER, SITE, SEO — centro de configuração do projeto |
 | Services | `src/lib/services/` | LinkService, AnalyticsService, AuthService, CacheService, RedirectService |
 | Repositories | `src/lib/repositories/` | LinkRepository, ClickRepository, AuditRepository (classes com DI) |
 | Domain Errors | `src/lib/errors/` | DomainError, NotFoundError, BadRequestError... |

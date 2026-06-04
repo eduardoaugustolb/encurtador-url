@@ -3,11 +3,11 @@ import { ArrowLeftIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import ASCIIText from "@/components/ascii-text";
 import { Logo } from "@/components/logo";
+import { OWNER } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Página não encontrada",
-  description:
-    "A página que você procura não existe no Bit Link. Volte para a home e tente novamente.",
+  description: `A página que você procura não existe. Volte para a home de ${OWNER.name} e tente novamente.`,
 };
 
 export default function NotFound() {

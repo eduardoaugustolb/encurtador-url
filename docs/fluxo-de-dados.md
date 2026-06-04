@@ -98,7 +98,7 @@ sequenceDiagram
 
 ---
 
-## 3. Admin — CRUD de Links (via tRPC)
+## 3. Admin — CRUD + Reorder de Links (via tRPC)
 
 ```mermaid
 %%{init: {'sequence': {'actorMargin': 50, 'boxMargin': 18}}}%%
@@ -143,6 +143,15 @@ sequenceDiagram
         Note over DB: ON DELETE CASCADE<br/>remove clicks também
         t->>C: invalidateSlug()
         t->>AUD: INSERT audit_log
+        t-->>A: { ok: true }
+    end
+
+    Note over A,C: ─── REORDER — links.reorder ───
+    A->>t: api.links.reorder.useMutation({ items })
+    t->>M: adminMutationProcedure<br/>(auth + rate limit + CSRF)
+    alt Autorizado
+        t->>DB: UPDATE links SET position … (transaction)
+        t->>AUD: INSERT audit_log (action: link.reorder, ip)
         t-->>A: { ok: true }
     end
 ```

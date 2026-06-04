@@ -26,8 +26,12 @@ export class LinkService {
     return link;
   }
 
+  async getHomeLinksPaginated(cursor?: string, limit?: number) {
+    return this.linkRepo.paginateHomeLinks(cursor, limit);
+  }
+
   async create(input: CreateLinkInput, ip: string) {
-    const { destinationUrl, title, slug } = input;
+    const { destinationUrl, title, slug, icon } = input;
 
     if (!validateDestinationUrl(destinationUrl)) {
       throw new BadRequestError("Invalid destination URL");
@@ -41,6 +45,7 @@ export class LinkService {
       slug: linkSlug,
       destinationUrl,
       title: title ?? null,
+      icon: icon ?? null,
     });
 
     await this.invalidateSlugFn(linkSlug);
@@ -68,6 +73,8 @@ export class LinkService {
       destinationUrl: input.destinationUrl,
       title: input.title,
       isActive: input.isActive,
+      showOnHome: input.showOnHome,
+      icon: input.icon,
     });
 
     await this.invalidateSlugFn(link.slug);
@@ -87,6 +94,20 @@ export class LinkService {
     });
 
     return updated;
+  }
+
+  async reorder(items: { id: string; position: number }[], ip: string) {
+    await this.linkRepo.updatePositions(items);
+
+    this.auditRepo.record({
+      action: "link.reorder",
+      entityType: "link",
+      entityId: items.map((i) => i.id).join(","),
+      payload: { items },
+      ip,
+    });
+
+    return { ok: true as const };
   }
 
   async delete(id: string, ip: string) {

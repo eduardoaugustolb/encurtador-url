@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Checkbox } from "../ui/checkbox";
+import { IconPicker } from "@/components/link-three/icon-picker";
 import type { Link } from "./types";
 
 interface EditLinkDialogProps {
@@ -27,6 +28,8 @@ export function EditLinkDialog({
   onUpdated,
 }: EditLinkDialogProps) {
   const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedIcon, setSelectedIcon] = useState<string | null>(link.icon);
+  const [showOnHome, setShowOnHome] = useState(link.showOnHome);
 
   const updateMutation = api.links.update.useMutation({
     onSuccess: () => {
@@ -54,7 +57,12 @@ export function EditLinkDialog({
 
   async function onSubmit(data: UpdateLinkInput) {
     setApiError(null);
-    updateMutation.mutate({ id: link.id, ...data });
+    updateMutation.mutate({
+      id: link.id,
+      ...data,
+      showOnHome,
+      icon: selectedIcon,
+    });
   }
 
   return (
@@ -88,6 +96,22 @@ export function EditLinkDialog({
         <div className="flex items-center gap-2">
           <Checkbox {...register("isActive")} id="edit-is-active" />
           <Label htmlFor="edit-is-active">Active</Label>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={showOnHome}
+            onCheckedChange={(v) => setShowOnHome(v === true)}
+            id="edit-show-on-home"
+          />
+          <Label htmlFor="edit-show-on-home">
+            Show on home page (Link Three)
+          </Label>
+        </div>
+
+        <div className="space-y-1">
+          <Label>Icon</Label>
+          <IconPicker value={selectedIcon} onChange={setSelectedIcon} />
         </div>
 
         {apiError && <p className="text-xs text-destructive">{apiError}</p>}

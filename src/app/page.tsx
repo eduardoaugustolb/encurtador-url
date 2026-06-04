@@ -1,50 +1,56 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+import { OWNER, SITE } from "@/lib/constants";
+import { SilkBackground } from "@/components/link-three/silk-background";
+import { StaggerEntrance } from "@/components/link-three/stagger-entrance";
+import { LinkThreeScrollList } from "@/components/link-three/link-three-scroll-list";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export const metadata: Metadata = {
-  title: "Encurtador de URLs",
-  description:
-    "Encurte links longos, compartilhe de forma inteligente e acompanhe cada clique com análises em tempo real. Bit Link — o encurtador de URLs com dashboard completo.",
-  openGraph: {
-    title: "Encurtador de URLs",
-    description:
-      "Encurte links longos, compartilhe de forma inteligente e acompanhe cada clique com análises em tempo real.",
-  },
-  twitter: {
-    title: "Encurtador de URLs",
-    description:
-      "Encurte links longos, compartilhe de forma inteligente e acompanhe cada clique com análises em tempo real.",
-  },
-};
+export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-lg text-4xl font-bold leading-tight tracking-tight text-black dark:text-zinc-50">
-            Encurte seus links com análises em tempo real
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Crie links curtos e rastreáveis em segundos. Acompanhe cliques,
-            referências e tendências com um dashboard completo de analytics.
-          </p>
+    <main className="relative flex min-h-svh flex-col items-center justify-center px-6">
+      <SilkBackground />
+
+      <StaggerEntrance className="relative z-10 mx-auto flex w-full max-w-sm flex-col items-center gap-6 py-8">
+        <div className="flex flex-col items-center gap-2">
+          <Avatar className="h-30 w-30 aspect-square">
+            <AvatarFallback>
+              <Skeleton className="w-full h-full rounded-full" />
+            </AvatarFallback>
+            <AvatarImage
+              src={OWNER.avatar || undefined}
+              className="aspect-square"
+            />
+          </Avatar>
+
+          <div className="flex flex-col items-center gap-1 text-center">
+            <h1 className="text-xl font-bold tracking-tight text-white">
+              {OWNER.name}
+            </h1>
+            <p className="text-sm text-zinc-400">{OWNER.handle}</p>
+          </div>
+
+          {OWNER.bio && (
+            <p className="max-w-xs text-center text-md leading-relaxed text-zinc-500">
+              {OWNER.bio}
+            </p>
+          )}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <Link
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-6 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-auto"
-            href="/admin/login"
+
+        <LinkThreeScrollList />
+
+        <div className="flex flex-col items-center gap-2">
+          <a
+            href="https://github.com/eduardoaugustolb/encurtador-url"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-zinc-700 transition-colors hover:text-zinc-500"
           >
-            Acessar painel
-          </Link>
-          <Link
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-6 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-auto"
-            href="/admin/login"
-          >
-            Criar link curto
-          </Link>
+            {SITE.name}
+          </a>
         </div>
-      </main>
-    </div>
+      </StaggerEntrance>
+    </main>
   );
 }
